@@ -280,3 +280,47 @@ print("Root causes:", analysis['root_causes'])
 print("Ultimate effects:", analysis['leaf_effects'])
 print("Mediating variables:", analysis['mediators'])
 print("Confounders:", analysis['confounders'])
+
+
+# Boston Housing dataset column names
+boston_labels = {
+    'X0': 'CRIM',     # Crime rate
+    'X1': 'ZN',       # Proportion of residential land zoned
+    'X2': 'INDUS',    # Proportion of non-retail business acres
+    'X3': 'CHAS',     # Charles River dummy variable
+    'X4': 'NOX',      # Nitric oxides concentration
+    'X5': 'RM',       # Average number of rooms per dwelling
+    'X6': 'AGE',      # Proportion of owner-occupied units built prior to 1940
+    'X7': 'DIS',      # Weighted distances to employment centers
+    'X8': 'RAD',      # Index of accessibility to radial highways
+    'X9': 'TAX',      # Full-value property-tax rate
+    'X10': 'PTRATIO', # Pupil-teacher ratio
+    'X11': 'B',       # Proportion of blacks
+    'X12': 'LSTAT',   # % lower status of the population
+    'X13': 'MEDV'     # Median value of owner-occupied homes
+}
+
+# Function to replace X indices with actual names in the solution
+def replace_variable_names(solution, label_mapping):
+    new_solution = []
+    for rel in solution:
+        new_rel = rel.copy()
+        # Replace 'from' and 'to' with actual names
+        new_rel['from'] = label_mapping.get(rel['from'], rel['from'])
+        new_rel['to'] = label_mapping.get(rel['to'], rel['to'])
+        new_solution.append(new_rel)
+    return new_solution
+
+# Apply the replacement
+labeled_solution = replace_variable_names(solution, boston_labels)
+
+# Now you can use the labeled solution with the visualization
+plt = visualize_causal_solution(labeled_solution)
+plt.show()
+
+# And with the analysis
+analysis = analyze_causal_structure(labeled_solution)
+print("\nRoot causes:", analysis['root_causes'])
+print("\nUltimate effects:", analysis['leaf_effects'])
+print("\nMediating variables:", analysis['mediators'])
+print("\nConfounders:", analysis['confounders'])
