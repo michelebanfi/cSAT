@@ -1,142 +1,102 @@
-import numpy as np
-from pysat.solvers import Minisat22
+from typing import List, Tuple, Dict, Set
+from pysat.formula import CNF
+import networkx as nx
 
 
-class CausalSAT:
+class CausalToSAT:
+    def __init__(self, edges: List[Tuple]):
+        """
+        Initialize converter with edges from FCI algorithm
+        edges: list of tuples (node1, node2, edge_type)
+        edge_types: '-->', 'o->', 'o-o', '<->'
+        """
+        self.edges = edges
+        self.nodes = self._get_unique_nodes()
+        self.var_mapping = {}
+        self.cnf = CNF()
+
+    def _get_unique_nodes(self) -> Set:
+        """Extract unique nodes from edges"""
+        nodes = set()
+        for n1, n2, _ in self.edges:
+            nodes.add(n1)
+            nodes.add(n2)
+        return nodes
+
+    def _create_variable_mapping(self):
+        """Create mapping of edge possibilities to SAT variables"""
+        var_counter = 1
+        for n1 in self.nodes:
+            for n2 in self.nodes:
+                if n1 != n2:
+                    # Variable for direct causation n1 -> n2
+                    self.var_mapping[(n1, n2, 'direct')] = var_counter
+                    var_counter += 1
+                    # Variable for latent common cause between n1 and n2
+                    self.var_mapping[(n1, n2, 'latent')] = var_counter
+                    var_counter += 1
+
+    def add_edge_constraints(self):
+        """Add clauses based on observed edge types"""
+        for n1, n2, edge_type in self.edges:
+            if edge_type == '-->':
+                # Direct causation must be true
+                self.cnf.append([self.var_mapping[(n1, n2, 'direct')]])
+                # No latent common cause
+                self.cnf.append([-self.var_mapping[(n1, n2, 'latent')]])
+
+            elif edge_type == 'o->':
+                # n2 cannot be ancestor of n1
+                self.cnf.append([-self.var_mapping[(n2, n1, 'direct')]])
+
+            elif edge_type == 'o-o':
+                # Either direct causation or latent common cause must exist
+                self.cnf.append([
+                    self.var_mapping[(n1, n2, 'direct')],
+                    self.var_mapping[(n1, n2, 'latent')]
+                ])
+
+            elif edge_type == '<->':
+                # Must have latent common cause
+                self.cnf.append([self.var_mapping[(n1, n2, 'latent')]])
+                # No direct causation in either direction
+                self.cnf.append([-self.var_mapping[(n1, n2, 'direct')]])
+                self.cnf.append([-self.var_mapping[(n2, n1, 'direct')]])
+
+    def add_transitivity_constraints(self):
+        """Add transitivity constraints for causal relationships"""
+        for n1 in self.nodes:
+            for n2 in self.nodes:
+                for n3 in self.nodes:
+                    if n1 != n2 and n2 != n3 and n1 != n3:
+                        # If n1->n2 and n2->n3, then n1->n3
+                        self.cnf.append([
+                            -self.var_mapping[(n1, n2, 'direct')],
+                            -self.var_mapping[(n2, n3, 'direct')],
+                            self.var_mapping[(n1, n3, 'direct')]
+                        ])
+
+    def convert(self) -> CNF:
+        """Convert causal graph to SAT problem"""
+        self._create_variable_mapping()
+        self.add_edge_constraints()
+        self.add_transitivity_constraints()
+        return self.cnf
+
+
+def convert_fci_to_sat(g, edges):
     """
-    Implementation of cSAT algorithm for causal structure learning from
-    overlapping datasets using SAT solvers
+    Convert FCI output to SAT problem
+    g: Graph object from FCI
+    edges: Edge list from FCI
     """
+    # Convert edges to format (node1, node2, edge_type)
+    formatted_edges = []
+    for edge in edges:
+        n1, n2 = edge[0], edge[1]
+        edge_type = edge[2]
+        formatted_edges.append((n1, n2, edge_type))
 
-    def __init__(self, datasets, alpha=0.05):
-        self.datasets = datasets
-        self.alpha = alpha
-        self.variables = self._get_union_variables()
-        self.clauses = []
-        self.var_map = {}
-        self._current_var = 1
-
-        # Initialize MAG structure
-        self.mag = {v: set() for v in self.variables}
-
-    def _get_union_variables(self):
-        """Get union of variables from all datasets"""
-        return sorted(set().union(*[set(d.columns) for d in self.datasets]))
-
-    def _create_sat_variable(self, relation):
-        """Create SAT variable for a causal relation"""
-        if relation not in self.var_map:
-            self.var_map[relation] = self._current_var
-            self._current_var += 1
-        return self.var_map[relation]
-
-    def _learn_initial_pags(self):
-        """Learn initial PAGs using FCI algorithm for each dataset"""
-        from causallearn.search.FCIBased import fci
-
-        self.pags = []
-        for data in self.datasets:
-            _, pag = fci(data.to_numpy(), data.columns.tolist(), self.alpha)
-            self.pags.append(pag)
-
-    def _encode_pag_constraints(self, pag):
-        """Convert PAG constraints to SAT clauses"""
-        # Get adjacency matrix and edge types
-        adj_matrix = pag.graph
-        edge_types = pag.edges
-
-        for i in range(adj_matrix.shape[0]):
-            for j in range(adj_matrix.shape[1]):
-                if adj_matrix[i, j] == 1:
-                    x = pag.nodes[i]
-                    y = pag.nodes[j]
-
-                    # Create variables for possible edge types
-                    circ_dir = self._create_sat_variable(f"{x}_o->{y}")
-                    dir_edge = self._create_sat_variable(f"{x}->{y}")
-                    bidir_edge = self._create_sat_variable(f"{x}<->{y}")
-
-                    # Add constraints based on edge markings
-                    if edge_types[i, j] == 1:  # Circle endpoint
-                        self.clauses.append([-circ_dir, dir_edge])
-                        self.clauses.append([-circ_dir, bidir_edge])
-                    elif edge_types[i, j] == 2:  # Arrowhead
-                        self.clauses.append([-dir_edge])
-                        self.clauses.append([bidir_edge])
-                    elif edge_types[i, j] == 3:  # Tail
-                        self.clauses.append([-bidir_edge])
-                        self.clauses.append([dir_edge])
-
-    def _add_acyclicity_constraints(self):
-        """Ensure MAG is acyclic using transitive closure"""
-        path_vars = {}
-
-        # Create path variables for all pairs
-        for i in self.variables:
-            for j in self.variables:
-                if i != j:
-                    path_vars[(i, j)] = self._create_sat_variable(f"path_{i}_{j}")
-
-        # Transitive closure constraints
-        for k in self.variables:
-            for i in self.variables:
-                for j in self.variables:
-                    if i != j and j != k and i != k:
-                        # Path i->j implies path i->k and path k->j
-                        edge_var = self._create_sat_variable(f"{i}->{j}")
-                        self.clauses.append([-edge_var, path_vars[(i, j)]])
-                        self.clauses.append([-path_vars[(i, k)], -path_vars[(k, j)], path_vars[(i, j)]])
-
-        # No self-loops
-        for v in self.variables:
-            self.clauses.append([-self._create_sat_variable(f"{v}->{v}")])
-
-    def solve(self):
-        """Solve the SAT problem and construct MAG"""
-        self._learn_initial_pags()
-
-        # Encode constraints from all PAGs
-        for pag in self.pags:
-            self._encode_pag_constraints(pag)
-
-        # Add acyclicity constraints
-        self._add_acyclicity_constraints()
-
-        # Solve with Minisat
-        with Minisat22(bootstrap_with=self.clauses) as solver:
-            if solver.solve():
-                model = solver.get_model()
-                self._construct_mag(model)
-                return True
-            return False
-
-    def _construct_mag(self, model):
-        """Build MAG from SAT solution"""
-        true_vars = {abs(v) for v in model if v > 0}
-
-        for rel, var in self.var_map.items():
-            if var in true_vars:
-                if '->' in rel:
-                    x, y = rel.split('->')
-                    self.mag[x].add((y, '->'))
-                elif '<->' in rel:
-                    x, y = rel.split('<->')
-                    self.mag[x].add((y, '<->'))
-                    self.mag[y].add((x, '<->'))
-
-
-# Example usage
-if __name__ == "__main__":
-    import pandas as pd
-
-    # Example datasets with overlapping variables
-    dataset1 = pd.DataFrame(np.random.randint(0, 2, (100, 3)), columns=['A', 'B', 'C'])
-    dataset2 = pd.DataFrame(np.random.randint(0, 2, (100, 2)), columns=['B', 'D'])
-
-    csat = CausalSAT([dataset1, dataset2])
-    if csat.solve():
-        print("Learned MAG structure:")
-        for node, edges in csat.mag.items():
-            print(f"{node}: {edges}")
-    else:
-        print("No consistent MAG found")
+    # Create and run converter
+    converter = CausalToSAT(formatted_edges)
+    return converter.convert()
