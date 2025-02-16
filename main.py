@@ -1,102 +1,282 @@
-from typing import List, Tuple, Dict, Set
+from causallearn.graph.Edge import Edge
+from causallearn.search.ConstraintBased.FCI import fci
+from causallearn.utils.GraphUtils import GraphUtils
+from causallearn.utils.Dataset import load_dataset
 from pysat.formula import CNF
+from pysat.solvers import Glucose3
 import networkx as nx
+import matplotlib.pyplot as plt
+
+data, labels = load_dataset("boston_housing")
+
+g, edges = fci(data)
+pdy = GraphUtils.to_pydot(g)
+# pdy.write_png('boston_housing.png')
+
+# create an ENUM for the edge types
+def get_endpoint_type(endpoint: int, isFirst: bool):
+    if endpoint == -1:
+        return "-"
+    elif endpoint == 1:
+        return "<" if isFirst else ">"
+    elif endpoint == 2:
+        return "o"
+
+def get_edge(edge: Edge):
+    start = edge.numerical_endpoint_1
+    end = edge.numerical_endpoint_2
+
+    return f"{get_endpoint_type(start, True)}-{get_endpoint_type(end, False)}"
 
 
-class CausalToSAT:
-    def __init__(self, edges: List[Tuple]):
-        """
-        Initialize converter with edges from FCI algorithm
-        edges: list of tuples (node1, node2, edge_type)
-        edge_types: '-->', 'o->', 'o-o', '<->'
-        """
-        self.edges = edges
-        self.nodes = self._get_unique_nodes()
-        self.var_mapping = {}
-        self.cnf = CNF()
+sat_clauses = []
+formatted_edges = []
+for edge in edges:
+    formatted_edges.append((edge.node1.name, edge.node2.name, get_edge(edge)))
 
-    def _get_unique_nodes(self) -> Set:
-        """Extract unique nodes from edges"""
-        nodes = set()
-        for n1, n2, _ in self.edges:
-            nodes.add(n1)
-            nodes.add(n2)
-        return nodes
+print(formatted_edges)
 
-    def _create_variable_mapping(self):
-        """Create mapping of edge possibilities to SAT variables"""
-        var_counter = 1
-        for n1 in self.nodes:
-            for n2 in self.nodes:
-                if n1 != n2:
-                    # Variable for direct causation n1 -> n2
-                    self.var_mapping[(n1, n2, 'direct')] = var_counter
-                    var_counter += 1
-                    # Variable for latent common cause between n1 and n2
-                    self.var_mapping[(n1, n2, 'latent')] = var_counter
-                    var_counter += 1
+def get_unique_nodes(edges):
+    nodes = set()
+    for edge in edges:
+        nodes.add(edge[0])
+        nodes.add(edge[1])
+    return nodes
 
-    def add_edge_constraints(self):
-        """Add clauses based on observed edge types"""
-        for n1, n2, edge_type in self.edges:
+nodes = get_unique_nodes(formatted_edges)
+
+var_mapping = {}
+def create_variable_mapping(nodes):
+    for n1 in nodes:
+        for n2 in nodes:
+            for edge_type in ["direct", "latent"]:
+                var_mapping[(n1, n2, edge_type)] = len(var_mapping) + 1
+    return var_mapping
+
+var_mapping = create_variable_mapping(nodes)
+
+def add_edge_constraints(edges):
+    cnf = []
+    for n1, n2, edge_type in edges:
             if edge_type == '-->':
                 # Direct causation must be true
-                self.cnf.append([self.var_mapping[(n1, n2, 'direct')]])
+                cnf.append([var_mapping[(n1, n2, 'direct')]])
                 # No latent common cause
-                self.cnf.append([-self.var_mapping[(n1, n2, 'latent')]])
+                cnf.append([-var_mapping[(n1, n2, 'latent')]])
 
             elif edge_type == 'o->':
                 # n2 cannot be ancestor of n1
-                self.cnf.append([-self.var_mapping[(n2, n1, 'direct')]])
+                cnf.append([-var_mapping[(n2, n1, 'direct')]])
 
             elif edge_type == 'o-o':
                 # Either direct causation or latent common cause must exist
-                self.cnf.append([
-                    self.var_mapping[(n1, n2, 'direct')],
-                    self.var_mapping[(n1, n2, 'latent')]
+                cnf.append([
+                    var_mapping[(n1, n2, 'direct')],
+                    var_mapping[(n1, n2, 'latent')]
                 ])
 
             elif edge_type == '<->':
                 # Must have latent common cause
-                self.cnf.append([self.var_mapping[(n1, n2, 'latent')]])
+                cnf.append([var_mapping[(n1, n2, 'latent')]])
                 # No direct causation in either direction
-                self.cnf.append([-self.var_mapping[(n1, n2, 'direct')]])
-                self.cnf.append([-self.var_mapping[(n2, n1, 'direct')]])
+                cnf.append([-var_mapping[(n2, n1, 'direct')]])
+                cnf.append([-var_mapping[(n1, n2, 'direct')]])
 
-    def add_transitivity_constraints(self):
-        """Add transitivity constraints for causal relationships"""
-        for n1 in self.nodes:
-            for n2 in self.nodes:
-                for n3 in self.nodes:
-                    if n1 != n2 and n2 != n3 and n1 != n3:
-                        # If n1->n2 and n2->n3, then n1->n3
-                        self.cnf.append([
-                            -self.var_mapping[(n1, n2, 'direct')],
-                            -self.var_mapping[(n2, n3, 'direct')],
-                            self.var_mapping[(n1, n3, 'direct')]
-                        ])
+    return cnf
 
-    def convert(self) -> CNF:
-        """Convert causal graph to SAT problem"""
-        self._create_variable_mapping()
-        self.add_edge_constraints()
-        self.add_transitivity_constraints()
-        return self.cnf
+cnf = add_edge_constraints(formatted_edges)
+
+def decode_cnf(cnf, var_mapping):
+    # Create reverse mapping
+    reverse_mapping = {v: k for k, v in var_mapping.items()}
+
+    decoded_clauses = []
+    for clause in cnf:
+        decoded_clause = []
+        for literal in clause:
+            # Get the absolute value of the literal to find the variable
+            var_num = abs(literal)
+            var_info = reverse_mapping[var_num]
+            node1, node2, edge_type = var_info
+
+            # Create readable representation
+            if literal > 0:
+                decoded_clause.append(f"{node1}-{edge_type}->{node2}")
+            else:
+                decoded_clause.append(f"NOT({node1}-{edge_type}->{node2})")
+
+        decoded_clauses.append(decoded_clause)
+
+    return decoded_clauses
+
+# Function to pretty print the decoded CNF
+def print_decoded_cnf(decoded_clauses):
+    print("Interpreted CNF formula:")
+    print("Each line represents a clause (OR between terms)")
+    print("The entire formula is an AND between all clauses")
+    print("\nClauses:")
+    for i, clause in enumerate(decoded_clauses, 1):
+        terms = " OR ".join(clause)
+        print(f"{i}. {terms}")
+
+# Use the functions
+decoded = decode_cnf(cnf, var_mapping)
+print_decoded_cnf(decoded)
 
 
-def convert_fci_to_sat(g, edges):
+def solve_causal_sat(cnf_clauses, var_mapping):
+    # Create a CNF formula object
+    formula = CNF()
+    for clause in cnf_clauses:
+        formula.append(clause)
+
+    # Create solver and add the formula
+    solver = Glucose3()
+    solver.append_formula(formula)
+
+    # Solve the formula
+    is_sat = solver.solve()
+
+    if not is_sat:
+        return False, None
+
+    # Get the solution
+    model = solver.get_model()
+
+    # Create reverse mapping for interpretation
+    reverse_mapping = {v: k for k, v in var_mapping.items()}
+
+    # Interpret the solution
+    causal_relationships = []
+    for var in model:
+        var_num = abs(var)
+        if var_num in reverse_mapping:
+            node1, node2, edge_type = reverse_mapping[var_num]
+            if var > 0:  # If the variable is positive in the solution
+                causal_relationships.append({
+                    'from': node1,
+                    'to': node2,
+                    'type': edge_type,
+                    'exists': True
+                })
+            else:  # If the variable is negative in the solution
+                causal_relationships.append({
+                    'from': node1,
+                    'to': node2,
+                    'type': edge_type,
+                    'exists': False
+                })
+
+    # Clean up
+    solver.delete()
+    return True, causal_relationships
+
+
+# Example usage:
+satisfiable, solution = solve_causal_sat(cnf, var_mapping)
+
+if satisfiable:
+    print("Solution found!")
+    print("\nCausal relationships:")
+    # Group relationships by type for clearer output
+    direct_causes = [rel for rel in solution if rel['type'] == 'direct' and rel['exists']]
+    latent_causes = [rel for rel in solution if rel['type'] == 'latent' and rel['exists']]
+
+    print("\nDirect causal relationships:")
+    for rel in direct_causes:
+        print(f"{rel['from']} --> {rel['to']}")
+
+    print("\nLatent common causes:")
+    for rel in latent_causes:
+        print(f"{rel['from']} <-> {rel['to']}")
+else:
+    print("No solution exists - the constraints are unsatisfiable")
+
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def visualize_causal_solution(solution, labels=None):
     """
-    Convert FCI output to SAT problem
-    g: Graph object from FCI
-    edges: Edge list from FCI
-    """
-    # Convert edges to format (node1, node2, edge_type)
-    formatted_edges = []
-    for edge in edges:
-        n1, n2 = edge[0], edge[1]
-        edge_type = edge[2]
-        formatted_edges.append((n1, n2, edge_type))
+    Create a visualization of the causal structure from SAT solution
 
-    # Create and run converter
-    converter = CausalToSAT(formatted_edges)
-    return converter.convert()
+    Args:
+        solution: List of dictionaries containing causal relationships
+        labels: Optional dictionary mapping variable indices to meaningful names
+    """
+    G = nx.DiGraph()
+
+    # Add nodes and edges
+    direct_edges = [(rel['from'], rel['to']) for rel in solution
+                    if rel['type'] == 'direct' and rel['exists']]
+    latent_edges = [(rel['from'], rel['to']) for rel in solution
+                    if rel['type'] == 'latent' and rel['exists']]
+
+    # Add all nodes first
+    nodes = set([node for edge in direct_edges + latent_edges for node in edge])
+    G.add_nodes_from(nodes)
+
+    # Add direct edges
+    G.add_edges_from(direct_edges)
+
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+    pos = nx.spring_layout(G)
+
+    # Draw nodes
+    nx.draw_networkx_nodes(G, pos, node_color='lightblue',
+                          node_size=1000, alpha=0.7)
+
+    # Draw direct edges
+    nx.draw_networkx_edges(G, pos, edgelist=direct_edges,
+                          edge_color='blue', arrows=True)
+
+    # Draw latent edges differently (as dashed lines)
+    for start, end in latent_edges:
+        plt.plot([pos[start][0], pos[end][0]],
+                [pos[start][1], pos[end][1]],
+                'r--', alpha=0.5)
+
+    # Add labels
+    if labels is None:
+        labels = {node: node for node in G.nodes()}
+    nx.draw_networkx_labels(G, pos, labels)
+
+    # Add legend
+    plt.plot([], [], 'b-', label='Direct Causation')
+    plt.plot([], [], 'r--', label='Latent Common Cause')
+    plt.legend()
+
+    plt.title('Discovered Causal Structure')
+    plt.axis('off')
+    return plt
+
+def analyze_causal_structure(solution):
+    """
+    Analyze the causal structure to find important patterns and metrics
+    """
+    # Create directed graph from direct relationships
+    G = nx.DiGraph()
+    direct_edges = [(rel['from'], rel['to']) for rel in solution
+                    if rel['type'] == 'direct' and rel['exists']]
+    G.add_edges_from(direct_edges)
+
+    analysis = {
+        'root_causes': [node for node in G.nodes() if G.in_degree(node) == 0],
+        'leaf_effects': [node for node in G.nodes() if G.out_degree(node) == 0],
+        'mediators': [node for node in G.nodes()
+                     if G.in_degree(node) > 0 and G.out_degree(node) > 0],
+        'cycles': list(nx.simple_cycles(G)),
+        'longest_path': nx.dag_longest_path(G) if nx.is_directed_acyclic_graph(G) else None,
+        'confounders': [(rel['from'], rel['to']) for rel in solution
+                       if rel['type'] == 'latent' and rel['exists']]
+    }
+    return analysis
+
+plt = visualize_causal_solution(solution)
+plt.show()
+
+analysis = analyze_causal_structure(solution)
+print("Root causes:", analysis['root_causes'])
+print("Ultimate effects:", analysis['leaf_effects'])
+print("Mediating variables:", analysis['mediators'])
+print("Confounders:", analysis['confounders'])
