@@ -10,10 +10,6 @@ from colorsys import hls_to_rgb
 # causallearn imports
 from causallearn.search.ConstraintBased.PC import pc
 
-# pysat imports
-from pysat.formula import CNF
-from pysat.solvers import Glucose3
-
 # sympy imports
 from sympy.logic.boolalg import is_cnf, to_cnf
 
@@ -31,6 +27,7 @@ from utils import basic_causal_dataframe
 
 # SAT solvers
 from SAT.classical import solveClassicalSAT
+from SAT.quantum import solveQuantumSAT
 
 
 # create the causal dataframe
@@ -158,7 +155,7 @@ for item in model:
 model = temp
 
 # solve with the quantum version
-
+is_sat, model = solveQuantumSAT(new_cnf)
 
 # output the results:
 print(f"LOG: Classical SAT solver returned: {is_sat}\n")

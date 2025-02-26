@@ -15,3 +15,4 @@ def solveClassicalSAT(cnf):
     solver.delete()
     
     return is_sat, model
+    
