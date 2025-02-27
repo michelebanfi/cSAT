@@ -1,7 +1,6 @@
 import math
 import numpy as np
 from qiskit import QuantumCircuit, transpile
-from qiskit.quantum_info import Statevector
 from qiskit.primitives import Sampler
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit.visualization import circuit_drawer
@@ -11,52 +10,44 @@ import matplotlib.pyplot as plt
 from qiskit.visualization import plot_histogram
 
 def get_repr(qc, is_inv, clause, i):
-    # Keep track of which qubits we flipped due to negation
+    # Track which qubits we need to flip back later
     flipped_qubits = []
     
-    # For each variable in the clause, apply X gates to negated variables
+    # For OR logic in CNF, we need to detect when the clause is NOT satisfied
+    # This happens when all literals in the clause are false
     for var in clause:
         var_idx = abs(var) - 1  # Convert to 0-indexed
         
-        # If the variable is negated, flip it
-        if var < 0:
+        # For positive literals, we want to detect when they're false
+        # For negative literals, we want to detect when they're true
+        if var > 0:  # Only flip POSITIVE variables
             qc.x(var_idx)
             flipped_qubits.append(var_idx)
     
-    print(f"DEBUG: flipped")
+    # Control qubits for the multi-controlled X gate
+    control_qubits = [abs(var) - 1 for var in clause]
     
-    # Apply X gates to all variables for OR logic implementation
-    control_qubits = [abs(var) - 1 for var in clause] # still 0-indexed
-    
-    print(f"DEBUG: control_qubits={control_qubits}")
-    for var_idx in control_qubits:
-        qc.x(var_idx)
-    
-    # Conditional inversion of ancilla qubit
+    # For uncomputing, invert the ancilla if needed
     if is_inv:
         qc.x(i)
     
-    # Use multi-controlled-X to implement the clause logic
+    # Apply multi-controlled-X to detect when all literals evaluate to false
     qc.mcx(control_qubits, i)
     
-    # Conditional inversion of ancilla qubit
+    # For computing, invert the ancilla to make it 1 when clause is satisfied
     if not is_inv:
         qc.x(i)
     
-    # Undo the X gates on all variables
-    for var_idx in control_qubits:
-        qc.x(var_idx)
-    
-    # Undo the flips for negated variables
+    # Restore the original state of the qubits
     for var_idx in flipped_qubits:
         qc.x(var_idx)
     
     qc.barrier()
 
 def oracle(qc, n_variables, cnf, n):
-    print(f"DEBUG: n_variables={n_variables}, cnf={cnf}, n={n}")
+    # print(f"DEBUG: n_variables={n_variables}, cnf={cnf}, n={n}")
     for i, clause in enumerate(cnf):
-        print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
+        # print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
         get_repr(qc, False, clause, n_variables + i)
 
     qc.mcp(np.pi, list(range(n_variables,n-1)), n-1)
@@ -81,9 +72,9 @@ def create_circuit(qc, n_variables, cnf, n):
 def solveQuantumSAT(cnf):
     
     # print qiskit version
-    print(f"LOG: qiskit version: {qiskit.__version__}")
+    # print(f"LOG: qiskit version: {qiskit.__version__}")
     
-    print(f"LOG: creating circuit")
+    # print(f"LOG: creating circuit")
     
     variables = set()
     for clause in cnf:
@@ -94,7 +85,7 @@ def solveQuantumSAT(cnf):
     n_clauses = len(cnf)
     
     n = n_variables + n_clauses
-    reps = round(np.pi/4 * math.sqrt(2**n_variables))
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
     
     qc = QuantumCircuit(n)
     
@@ -111,19 +102,21 @@ def solveQuantumSAT(cnf):
     # circuit_drawer(qc, output='mpl')
     # plt.show()
     
+    # remove barriers from the circuit
+    qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
     result = Sampler().run([optimized_qc], shots=1024).result()
     # print(f"DEBUG: result={result}")
     
     counts = result.quasi_dists[0]
     
-    print(f"DEBUG: counts={counts}")
+    # print(f"DEBUG: counts={counts}")
     
     counts = counts.binary_probabilities(num_bits=n)
-    print(f"DEBUG: counts={counts}")
+    # print(f"DEBUG: counts={counts}")
     
     # plot_histogram(counts)
-    plt.show()
+    # plt.show()
     solutions = []
     
     if len(counts) == 0:
@@ -131,10 +124,17 @@ def solveQuantumSAT(cnf):
     else:
         is_sat = True
         for bitstring, prob in sorted(counts.items(), key=lambda x: x[1], reverse=True):
-            #print(f"DEBUG: bitstring={bitstring}, prob={prob}")
-            if prob > 0.01:  # Only consider significant probabilities
+            # print(f"DEBUG: bitstring={bitstring}, prob={prob}")
+            # remove the first n_clauses bits
+            bitstring = bitstring[n_clauses:]
+            # print(f"DEBUG: bitstring={bitstring}")
+            # reverse the bitstring ordering
+            bitstring = bitstring[::-1]
+            # print(f"DEBUG: bitstring={bitstring}")
+            if prob > 0.05:  # Only consider significant probabilities
                 solution = []
                 for i in range(n_variables):
+                    # print(i)
                     var_num = i + 1  # Convert to 1-indexed
                     if bitstring[i] == '0':
                         solution.append(-var_num)
@@ -142,7 +142,7 @@ def solveQuantumSAT(cnf):
                         solution.append(var_num)
                 solutions.append(solution)
     
-    print(f"DEBUG: solutions={solutions}")
+    # print(f"DEBUG: solutions={solutions}")
     
         
     return is_sat, solutions

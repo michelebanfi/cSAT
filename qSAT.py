@@ -70,7 +70,7 @@ def count_unique_uppercase(tokens):
     return len(variables), variables
 
 
-formula = "(A \lor B) \land (\neg A \lor C) \land (\neg B \lor \neg C) \land (A \lor C)"
+formula = "(B \lor C) \land (A \lor D)"
 
 tokens = tokenize(formula)
 token_string = " ".join(tokens)
@@ -170,13 +170,14 @@ statevector = Statevector(qc)
 plot_statevector_circles(statevector)
 
 qc.measure_all()
-result = Sampler().run([qc], shots=100).result()[0]
+result = Sampler().run([qc], shots=1024).result()[0]
 co = result.data.meas.get_counts()
 
-circuit_drawer(qc, output="mpl")
+fig = circuit_drawer(qc, output="mpl")
+fig.savefig('circuitqsAT.png')
 
-plot_histogram(co)
-plt.show()
+# plot_histogram(co)
+# plt.show()
 
 qc = RemoveBarriers()(qc)
 
@@ -186,5 +187,5 @@ optimized_qc = transpile(qc, optimization_level=3)
 
 print(optimized_qc.count_ops())
 
-circuit_drawer(optimized_qc, output="mpl")
-plt.show()
+# circuit_drawer(optimized_qc, output="mpl")
+# plt.show()

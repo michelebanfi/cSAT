@@ -29,6 +29,7 @@ from utils import basic_causal_dataframe
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
 
+logging = True
 
 # create the causal dataframe
 data = basic_causal_dataframe()
@@ -36,7 +37,7 @@ data = basic_causal_dataframe()
 # extract the variable names
 variable_names = list(data.columns)
 
-print("\nLOG: Running the PC algorithm on the following data\n")
+if logging: print("\nLOG: Running the PC algorithm on the following data\n")
 
 # run the PC algorithm
 g = pc(data.to_numpy(), show_progress=False)
@@ -84,7 +85,7 @@ for i, j in zip(indices[0], indices[1]):
         })
         processed_pairs.add(node_pair)
 
-print(f"LOG: The extracted edges are: {edges}\n")
+if logging:  print(f"LOG: The extracted edges are: {edges}\n")
 
 # create a list of possible causal relationship in the variables
 causal_dict = {}
@@ -93,7 +94,7 @@ for node1 in node_mapping:
         for edge in ['direct']:
             causal_dict[(node1, node2, edge)] = len(causal_dict) + 1
             
-print(f"LOG: The causal dictionary is: {causal_dict}\n")
+# print(f"LOG: The causal dictionary is: {causal_dict}\n")
 
 # now we need to create the SAT clauses
 SATClauses = []
@@ -113,7 +114,7 @@ for item in edges:
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
         
         
-print(f"LOG: The SAT clauses are: {SATClauses}\n")
+# print(f"LOG: The SAT clauses are: {SATClauses}\n")
 
 # iterate through the clauses and count the number of variables
 variable_set = set()
@@ -131,8 +132,8 @@ for i, var in enumerate(variable_set):
 # reverse the mapping
 reverse_cnf_variable_mapping = {v: k for k, v in cnf_variable_mapping.items()}
 
-print(f"LOG: The variable mapping is: {cnf_variable_mapping}\n")
-print(f"LOG: The reverse variable mapping is: {reverse_cnf_variable_mapping}\n")
+# print(f"LOG: The variable mapping is: {cnf_variable_mapping}\n")
+# print(f"LOG: The reverse variable mapping is: {reverse_cnf_variable_mapping}\n")
 
 # so the new cnf will be
 new_cnf = []
@@ -143,10 +144,13 @@ for clause in SATClauses:
         new_clause.append(new_var if var > 0 else -new_var)
     new_cnf.append(new_clause)
     
-print(f"LOG: The new CNF is: {new_cnf}\n")
+if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
+# new_cnf = [[1, -1], [2, -2], [3, -3], [4, -4]]
+
 
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
+
 
 # just to map back the model
 temp = []
@@ -154,9 +158,32 @@ for item in model:
     temp.append(reverse_cnf_variable_mapping[abs(item)] if item > 0 else -reverse_cnf_variable_mapping[abs(item)])
 model = temp
 
-# solve with the quantum version
-is_sat, model = solveQuantumSAT(new_cnf)
-
 # output the results:
-print(f"LOG: Classical SAT solver returned: {is_sat}\n")
-print(f"LOG: The model is: {model}\n")
+if logging: print(f"LOG: Classical SAT solver returned: {is_sat}\n")
+if logging: print(f"LOG: The model is: {model}\n")
+
+# Get solutions from quantum SAT solver
+is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
+
+# print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
+
+# print(reverse_cnf_variable_mapping)
+
+# Map back all solutions using reverse_cnf_variable_mapping
+mapped_solutions = []
+for solution in quantum_solutions:
+    mapped_solution = []
+    for item in solution:
+        # print(item)
+        mapped_var = reverse_cnf_variable_mapping[abs(item)]
+        mapped_solution.append(mapped_var if item > 0 else -mapped_var)
+    mapped_solutions.append(mapped_solution)
+
+if logging: print(f"LOG: Quantum SAT solver returned: {is_sat}\n")
+if logging: print(f"LOG: The models are: {mapped_solutions}\n")
+
+# check if quantum does indeed contain the classical solution
+if model in mapped_solutions:
+    print(f"\033[1m\033[4mLOG: The classical solution is in the quantum solutions\033[0m\n")
+else:
+    if logging: print(f"LOG: The classical solution is NOT in the quantum solutions\n")
