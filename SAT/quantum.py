@@ -8,7 +8,7 @@ from qiskit.visualization import circuit_drawer
 import matplotlib.pyplot as plt
 from qiskit.visualization import plot_histogram
 
-from utils import cluster_solutions, elbow_plot
+from utils import cluster_solutions, elbow_plot, structural_check
 
 def get_repr(qc, is_inv, clause, i):
     # Track which qubits we need to flip back later
@@ -76,6 +76,8 @@ def solveQuantumSAT(cnf, debug=False):
     # print(f"LOG: qiskit version: {qiskit.__version__}")
     
     # print(f"LOG: creating circuit")
+    
+    structural_check(cnf)
     
     variables = set()
     for clause in cnf:

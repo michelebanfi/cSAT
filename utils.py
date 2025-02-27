@@ -62,3 +62,10 @@ def elbow_plot(counts: dict):
     plt.plot(values)
     plt.show()
     
+def structural_check(cnf: list):
+    for item in cnf:
+        variables = set()
+        for var in item:
+            variables.add(abs(var))
+        if len(item) != len(variables):
+            raise Exception("There is something wrong with yout variables. Two variables are the same in a clause")
