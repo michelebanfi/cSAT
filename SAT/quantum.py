@@ -4,10 +4,11 @@ from qiskit import QuantumCircuit, transpile
 from qiskit.primitives import Sampler
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit.visualization import circuit_drawer
-import qiskit
 
 import matplotlib.pyplot as plt
 from qiskit.visualization import plot_histogram
+
+from utils import cluster_solutions, elbow_plot
 
 def get_repr(qc, is_inv, clause, i):
     # Track which qubits we need to flip back later
@@ -69,7 +70,7 @@ def create_circuit(qc, n_variables, cnf, n):
     oracle(qc, n_variables, cnf, n)
     diffuser(qc, n_variables)
 
-def solveQuantumSAT(cnf):
+def solveQuantumSAT(cnf, debug=False):
     
     # print qiskit version
     # print(f"LOG: qiskit version: {qiskit.__version__}")
@@ -85,7 +86,10 @@ def solveQuantumSAT(cnf):
     n_clauses = len(cnf)
     
     n = n_variables + n_clauses
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
+    
+    if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
+    
+    reps = round(np.pi/4 * math.sqrt(2**n_variables))
     
     qc = QuantumCircuit(n)
     
@@ -105,18 +109,25 @@ def solveQuantumSAT(cnf):
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    result = Sampler().run([optimized_qc], shots=1024).result()
-    # print(f"DEBUG: result={result}")
+    result = Sampler().run([optimized_qc], shots=2048).result()
+    if debug: print(f"DEBUG: result={result}")
     
     counts = result.quasi_dists[0]
     
-    # print(f"DEBUG: counts={counts}")
+    if debug: print(f"DEBUG: counts={counts}")
     
     counts = counts.binary_probabilities(num_bits=n)
-    # print(f"DEBUG: counts={counts}")
+    if debug: print(f"DEBUG: counts={counts}")
     
-    # plot_histogram(counts)
-    # plt.show()
+    if debug: elbow_plot(counts)
+    
+    if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
+    counts = cluster_solutions(counts)
+    if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
+    
+    if debug: 
+        plot_histogram(counts)
+        plt.show()
     solutions = []
     
     if len(counts) == 0:
@@ -131,18 +142,16 @@ def solveQuantumSAT(cnf):
             # reverse the bitstring ordering
             bitstring = bitstring[::-1]
             # print(f"DEBUG: bitstring={bitstring}")
-            if prob > 0.05:  # Only consider significant probabilities
-                solution = []
-                for i in range(n_variables):
-                    # print(i)
-                    var_num = i + 1  # Convert to 1-indexed
-                    if bitstring[i] == '0':
-                        solution.append(-var_num)
-                    else:
-                        solution.append(var_num)
-                solutions.append(solution)
+            solution = []
+            for i in range(n_variables):
+                # print(i)
+                var_num = i + 1  # Convert to 1-indexed
+                if bitstring[i] == '0':
+                    solution.append(-var_num)
+                else:
+                    solution.append(var_num)
+            solutions.append(solution)
     
     # print(f"DEBUG: solutions={solutions}")
-    
         
     return is_sat, solutions
