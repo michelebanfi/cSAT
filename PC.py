@@ -1,27 +1,12 @@
 # basic imports
-import pandas as pd
 import numpy as np
 import pydot
-import math
-import re
 import matplotlib.pyplot as plt
 from colorsys import hls_to_rgb
 import os
 
 # causallearn imports
 from causallearn.search.ConstraintBased.PC import pc
-
-# sympy imports
-from sympy.logic.boolalg import is_cnf, to_cnf
-
-# qiskit imports
-from qiskit import QuantumCircuit
-from qiskit.visualization import plot_histogram
-from qiskit.quantum_info import Statevector
-from qiskit.primitives import StatevectorSampler as Sampler
-from qiskit.visualization import circuit_drawer
-from qiskit import transpile
-from qiskit.transpiler.passes import RemoveBarriers
 
 # utils imports
 from utils import basic_causal_dataframe
@@ -228,7 +213,7 @@ classical_direct_causes = [rel for rel in getCausalRelationship(classical_model)
 
 # Generate and save classical solution
 classical_graph = generate_graph_from_causes(classical_direct_causes)
-classical_graph.write_png("output/classical_PC_output.png")
+classical_graph.write_png("output/PC/classical_PC_output.png")
 
 # Process quantum solutions and create visualization grid
 def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
@@ -264,7 +249,7 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
         graph = generate_graph_from_causes(quantum_direct_causes)
         
         # Save to temporary file
-        temp_filename = f"output/temp_quantum_solution_{i}.png"
+        temp_filename = f"output/PC/temp_quantum_solution_{i}.png"
         graph.write_png(temp_filename)
         temp_files.append(temp_filename)
         
@@ -281,7 +266,7 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
         axes[row, col].axis('off')
     
     plt.tight_layout()
-    plt.savefig("output/quantum_PC_outputs.png", dpi=300)
+    plt.savefig("output/PC/quantum_PC_outputs.png", dpi=300)
     plt.close(fig)
     
     # Clean up temporary files
@@ -297,4 +282,29 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
 # Generate visualization of quantum solutions
 if mapped_solutions:
     visualize_quantum_solutions(mapped_solutions)
+
+# After defining generate_graph_from_causes function, add this to visualize the PC output directly
+def visualize_pc_output():
+    # Create a graph to visualize the PC algorithm output
+    pc_graph = pydot.Dot("pc_graph", graph_type="digraph")
+    
+    # Add nodes
+    for node_name in node_mapping:
+        pc_graph.add_node(pydot.Node(node_name))
+    
+    # Add edges based on the extracted edges
+    for edge in edges:
+        if edge['type'] == '->':
+            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to']))
+        elif edge['type'] == '--':
+            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to'], dir="none"))
+        elif edge['type'] == '<->':
+            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to'], dir="both"))
+    
+    # Save the graph
+    pc_graph.write_png("output/PC/PC_output.png")
+    if logging: print("LOG: Saved PC algorithm output visualization\n")
+
+# Generate the PC algorithm output visualization
+visualize_pc_output()
 
