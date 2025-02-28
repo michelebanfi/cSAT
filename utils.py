@@ -11,7 +11,9 @@ next_var_id = 1
 def basic_causal_dataframe() -> pd.DataFrame:
     X = np.random.uniform(size=1000)
     eps = np.random.normal(size=1000)
+    eps = np.zeros(1000)
     delta = np.random.uniform(size=1000)
+    delta = np.zeros(1000)
     Y = -7 * X + 0.5 * delta
     Z = 2 * X + Y + eps
 

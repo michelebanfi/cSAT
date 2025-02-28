@@ -15,6 +15,9 @@ from utils import basic_causal_dataframe
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
 
+# set the seed for reproducibility
+np.random.seed(0)
+
 logging = True
 
 # create the causal dataframe
