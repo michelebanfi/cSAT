@@ -93,6 +93,9 @@ def solveQuantumSAT(cnf, debug=False):
     
     reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
     
+    if n > 20:
+        raise Exception("The number of variables and clauses is too high for the quantum algorithm")
+    
     qc = QuantumCircuit(n)
     
     qc.h(list(range(n_variables)))
