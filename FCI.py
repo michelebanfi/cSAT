@@ -2,11 +2,11 @@
 import numpy as np
 import pydot
 import matplotlib.pyplot as plt
-from colorsys import hls_to_rgb
 import os
 
 # causallearn imports
-from causallearn.search.ConstraintBased.PC import pc
+from causallearn.search.ConstraintBased.FCI import fci
+from causallearn.utils.GraphUtils import GraphUtils
 
 # utils imports
 from utils import basic_causal_dataframe
@@ -15,97 +15,88 @@ from utils import basic_causal_dataframe
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
 
-# set the seed for reproducibility
+
 np.random.seed(0)
 
 logging = True
 
-# create the causal dataframe
 data = basic_causal_dataframe()
 
 # extract the variable names
 variable_names = list(data.columns)
 
-if logging: print("\nLOG: Running the PC algorithm on the following data\n")
+g, edges = fci(data.to_numpy(), node_names=variable_names)
 
-# run the PC algorithm
-g = pc(data.to_numpy(), show_progress=False)
+pdy = GraphUtils.to_pydot(g)
+pdy.write_png("output/FCI/FCI_output.png")
 
-# rename the nodes
-for i, node in enumerate(g.G.nodes):
-    node.name = variable_names[i]
-    
-# save the node mapping and the reversed mapping
-node_mapping = {node.name: index for index, node in enumerate(g.G.nodes)}
-reversed_node_mapping = {index: node.name for index, node in enumerate(g.G.nodes)}
-
-# Now we need to extract the edges:
 edges = []
-indices = np.where(g.G.graph != 0)
+indices = np.where(g.graph != 0)
 processed_pairs = set()
 
 for i, j in zip(indices[0], indices[1]):
-    
     node_pair = frozenset([i.item(), j.item()])
     
     if node_pair in processed_pairs:
         continue
-        
-    if g.G.graph[i,j] == 1 and g.G.graph[j,i] == -1:
+    
+    if g.graph[i, j] == -1 and g.graph[j, i] == 1:
         edges.append({
-            'from': reversed_node_mapping[i.item()],
-            'to': reversed_node_mapping[j.item()],
+            'from': g.nodes[i].get_name(),
+            'to': g.nodes[j].get_name(),
             'type': "->"
         })
-    
-    elif g.G.graph[i,j] == -1 and g.G.graph[j,i] == -1:
+    elif g.graph[i, j] == 2 and g.graph[j, i] == 1:
         edges.append({
-            'from': reversed_node_mapping[i.item()],
-            'to': reversed_node_mapping[j.item()],
-            'type': "--"
+            'from': g.nodes[j].get_name(),
+            'to': g.nodes[i].get_name(),
+            'type': "o->"
         })
-        processed_pairs.add(node_pair) 
-    
-    elif g.G.graph[i,j] == 1 and g.G.graph[j,i] == 1:
+    elif g.graph[i, j] == 2 and g.graph[j, i] == 2:
         edges.append({
-            'from': reversed_node_mapping[i.item()],
-            'to': reversed_node_mapping[j.item()],
+            'from': g.nodes[i].get_name(),
+            'to': g.nodes[j].get_name(),
+            'type': "o-o"
+        })
+        processed_pairs.add(node_pair)
+    elif g.graph[i, j] == 1 and g.graph[j, i] == 1:
+        edges.append({
+            'from': g.nodes[i].get_name(),
+            'to': g.nodes[j].get_name(),
             'type': "<->"
         })
         processed_pairs.add(node_pair)
 
-if logging:  print(f"LOG: The extracted edges are: {edges}\n")
-
 # create a list of possible causal relationship in the variables
 causal_dict = {}
-for node1 in node_mapping:
-    for node2 in node_mapping:
-        for edge in ['direct']:
+for node1 in variable_names:
+    for node2 in variable_names:
+        for edge in ['direct', 'latent']:
             causal_dict[(node1, node2, edge)] = len(causal_dict) + 1
-            
-reversed_causal_dict = {v: k for k, v in causal_dict.items()}
-            
-# print(f"LOG: The causal dictionary is: {causal_dict}\n")
 
-# now we need to create the SAT clauses
+reversed_causal_dict = {v: k for k, v in causal_dict.items()}
+
 SATClauses = []
 
 for item in edges:
-    if item['type'] == '->':
-        # there MUST be a direct edge from node1 to node2 and NO direct edge from node2 to node1
-        SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
+    if item["type"] == "->":
+        SATClauses.append([causal_dict[(item["from"], item["to"], "direct")]])
+        SATClauses.append([-causal_dict[(item["to"], item["from"], "direct")]])
+    elif item["type"] == "o->":
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
-    elif item['type'] == '--':
-        # there MUST be a direct edge from node1 to node2 OR a direct edge from node2 to node1
-        SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')], causal_dict[(item['to'], item['from'], 'direct')]])
-    elif item['type'] == '<->':
-        # there MUSTN'T be a direct edge from node1 to node2 AND a direct edge from node2 to node1
+    elif item["type"] == "o-o":
+        SATClauses.append([
+            causal_dict[(item['from'], item['to'], 'direct')],
+            causal_dict[(item['to'], item['from'], 'direct')],
+            causal_dict[(item['from'], item['to'], 'latent')],
+        ])
+    elif item['type'] == "<->":
         SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
+        SATClauses.append([causal_dict[(item['from'], item['to'], 'latent')]])
+    
+print(f"LOG: The SAT clauses are: {SATClauses}\n")
         
-        
-# print(f"LOG: The SAT clauses are: {SATClauses}\n")
-
 # iterate through the clauses and count the number of variables
 variable_set = set()
 for clause in SATClauses:
@@ -125,7 +116,6 @@ reverse_cnf_variable_mapping = {v: k for k, v in cnf_variable_mapping.items()}
 # print(f"LOG: The variable mapping is: {cnf_variable_mapping}\n")
 # print(f"LOG: The reverse variable mapping is: {reverse_cnf_variable_mapping}\n")
 
-# so the new cnf will be
 new_cnf = []
 for clause in SATClauses:
     new_clause = []
@@ -135,12 +125,9 @@ for clause in SATClauses:
     new_cnf.append(new_clause)
     
 if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
-# new_cnf = [[1, -1], [2, -2], [3, -3], [4, -4]]
-
 
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
-
 
 # just to map back the model
 temp = []
@@ -154,10 +141,6 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
 is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
-
-# print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
-
-# print(reverse_cnf_variable_mapping)
 
 # Map back all solutions using reverse_cnf_variable_mapping
 mapped_solutions = []
@@ -215,7 +198,7 @@ classical_direct_causes = [rel for rel in getCausalRelationship(classical_model)
 
 # Generate and save classical solution
 classical_graph = generate_graph_from_causes(classical_direct_causes)
-classical_graph.write_png("output/PC/classical_PC_output.png")
+classical_graph.write_png("output/FCI/classical_FCI_output.png")
 
 # Process quantum solutions and create visualization grid
 def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
@@ -251,7 +234,7 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
         graph = generate_graph_from_causes(quantum_direct_causes)
         
         # Save to temporary file
-        temp_filename = f"output/PC/temp_quantum_solution_{i}.png"
+        temp_filename = f"output/FCI/temp_quantum_solution_{i}.png"
         graph.write_png(temp_filename)
         temp_files.append(temp_filename)
         
@@ -268,7 +251,7 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
         axes[row, col].axis('off')
     
     plt.tight_layout()
-    plt.savefig("output/PC/quantum_PC_outputs.png", dpi=300)
+    plt.savefig("output/FCI/quantum_FCI_outputs.png", dpi=300)
     plt.close(fig)
     
     # Clean up temporary files
@@ -284,29 +267,3 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
 # Generate visualization of quantum solutions
 if mapped_solutions:
     visualize_quantum_solutions(mapped_solutions)
-
-# After defining generate_graph_from_causes function, add this to visualize the PC output directly
-def visualize_pc_output():
-    # Create a graph to visualize the PC algorithm output
-    pc_graph = pydot.Dot("pc_graph", graph_type="digraph")
-    
-    # Add nodes
-    for node_name in node_mapping:
-        pc_graph.add_node(pydot.Node(node_name))
-    
-    # Add edges based on the extracted edges
-    for edge in edges:
-        if edge['type'] == '->':
-            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to']))
-        elif edge['type'] == '--':
-            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to'], dir="none"))
-        elif edge['type'] == '<->':
-            pc_graph.add_edge(pydot.Edge(edge['from'], edge['to'], dir="both"))
-    
-    # Save the graph
-    pc_graph.write_png("output/PC/PC_output.png")
-    if logging: print("LOG: Saved PC algorithm output visualization\n")
-
-# Generate the PC algorithm output visualization
-visualize_pc_output()
-

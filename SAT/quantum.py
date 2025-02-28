@@ -91,7 +91,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = round(np.pi/4 * math.sqrt(2**n_variables))
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
     
     qc = QuantumCircuit(n)
     
@@ -104,9 +104,9 @@ def solveQuantumSAT(cnf, debug=False):
     qc.measure_all()
     
     # uncomment just for debugging the circuit (yes, i mean the plotting)
-        
-    # circuit_drawer(qc, output='mpl')
-    # plt.show()
+    if debug:  
+        circuit_drawer(qc, output='mpl')
+        plt.show()
     
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
