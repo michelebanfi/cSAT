@@ -1,7 +1,7 @@
 from SAT.quantum import solveQuantumSAT
 from SAT.classical import solveClassicalSAT
 
-new_cnf = [[2, 3], [1, 4]]
+new_cnf = [[2, 3], [1, 4], [-1, 3]]
 
 is_sat, model = solveClassicalSAT(new_cnf)
 
