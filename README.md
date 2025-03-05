@@ -2,6 +2,8 @@
 
 This project implements causal discovery algorithms using SAT (Boolean satisfiability) solvers, including both classical and quantum approaches. It provides tools for discovering causal relationships in data using algorithms such as PC and FCI.
 
+> `venv\Scripts\activate` to activate the virtual environment
+
 ## Overview
 
 cSAT combines causal inference techniques with SAT solving to discover and validate causal structures in data. The project supports:
