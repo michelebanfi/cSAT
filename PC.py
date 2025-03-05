@@ -101,9 +101,9 @@ for item in edges:
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')], causal_dict[(item['to'], item['from'], 'direct')]])
         SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')], -causal_dict[(item['to'], item['from'], 'direct')]])
     elif item['type'] == '<->':
-        # there MUSTN'T be a direct edge from node1 to node2 AND a direct edge from node2 to node1
-        SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
-        SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
+        # there MUST be a direct edge from node1 to node2 and a direct edge from node2 to node1
+        SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
+        SATClauses.append([causal_dict[(item['to'], item['from'], 'direct')]])
         
         
 # print(f"LOG: The SAT clauses are: {SATClauses}\n")
