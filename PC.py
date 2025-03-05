@@ -96,8 +96,10 @@ for item in edges:
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
     elif item['type'] == '--':
-        # there MUST be a direct edge from node1 to node2 OR a direct edge from node2 to node1
+        # there MUST be exactly one direct edge: either from node1 to node2 OR from node2 to node1 (XOR)
+        # For XOR in CNF: (A OR B) AND (NOT A OR NOT B)
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')], causal_dict[(item['to'], item['from'], 'direct')]])
+        SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')], -causal_dict[(item['to'], item['from'], 'direct')]])
     elif item['type'] == '<->':
         # there MUSTN'T be a direct edge from node1 to node2 AND a direct edge from node2 to node1
         SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
