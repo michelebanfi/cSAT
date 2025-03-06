@@ -14,6 +14,7 @@ from utils import basic_causal_dataframe
 # SAT solvers
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
+from SAT.validateSolution import validate_all_solutions
 
 # set the seed for reproducibility
 np.random.seed(0)
@@ -143,7 +144,6 @@ if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
 
-
 # just to map back the model
 temp = []
 for item in model:
@@ -160,6 +160,19 @@ is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
 # print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
 
 # print(reverse_cnf_variable_mapping)
+
+# check for quantum solutions validity
+if is_sat:
+    
+    # Validate all solutions, which is an array of boolean values
+    validity = validate_all_solutions(new_cnf, quantum_solutions)
+    
+    # count the number of valid solutions
+    valid_count = sum(validity)
+    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count}\033[0m\n")
+    
+    # Filter out only the valid solutions
+    quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
 
 # Map back all solutions using reverse_cnf_variable_mapping
 mapped_solutions = []

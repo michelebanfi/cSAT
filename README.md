@@ -2,7 +2,8 @@
 
 This project implements causal discovery algorithms using SAT (Boolean satisfiability) solvers, including both classical and quantum approaches. It provides tools for discovering causal relationships in data using algorithms such as PC and FCI.
 
-> `venv\Scripts\activate` to activate the virtual environment
+> `venv\Scripts\activate` to activate the virtual environment on Windows
+> `source venv/bin/activate` to activate the virtual environment on Linux
 
 ## Overview
 
