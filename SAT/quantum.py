@@ -106,7 +106,7 @@ def solveQuantumSAT(cnf, debug=False):
     # uncomment just for debugging the circuit (yes, i mean the plotting)
     if debug:  
         circuit_drawer(qc, output='mpl')
-        plt.show()
+        plt.savefig('debug/circuit.png')
     
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
@@ -129,7 +129,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: 
         plot_histogram(counts)
-        plt.show()
+        plt.savefig('debug/histogram.png')
     solutions = []
     
     if len(counts) == 0:
