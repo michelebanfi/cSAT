@@ -14,6 +14,7 @@ from utils import basic_causal_dataframe
 # SAT solvers
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
+from SAT.validateSolution import validate_all_solutions
 
 # set the seed for reproducibility
 np.random.seed(0)
@@ -96,12 +97,14 @@ for item in edges:
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
     elif item['type'] == '--':
-        # there MUST be a direct edge from node1 to node2 OR a direct edge from node2 to node1
+        # there MUST be exactly one direct edge: either from node1 to node2 OR from node2 to node1 (XOR)
+        # For XOR in CNF: (A OR B) AND (NOT A OR NOT B)
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')], causal_dict[(item['to'], item['from'], 'direct')]])
+        SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')], -causal_dict[(item['to'], item['from'], 'direct')]])
     elif item['type'] == '<->':
-        # there MUSTN'T be a direct edge from node1 to node2 AND a direct edge from node2 to node1
-        SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
-        SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
+        # there MUST be a direct edge from node1 to node2 and a direct edge from node2 to node1
+        SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
+        SATClauses.append([causal_dict[(item['to'], item['from'], 'direct')]])
         
         
 # print(f"LOG: The SAT clauses are: {SATClauses}\n")
@@ -141,7 +144,6 @@ if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
 
-
 # just to map back the model
 temp = []
 for item in model:
@@ -158,6 +160,19 @@ is_sat, quantum_solutions = solveQuantumSAT(new_cnf, debug=True)
 # print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
 
 # print(reverse_cnf_variable_mapping)
+
+# check for quantum solutions validity
+if is_sat:
+    
+    # Validate all solutions, which is an array of boolean values
+    validity = validate_all_solutions(new_cnf, quantum_solutions)
+    
+    # count the number of valid solutions
+    valid_count = sum(validity)
+    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count}\033[0m\n")
+    
+    # Filter out only the valid solutions
+    quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
 
 # Map back all solutions using reverse_cnf_variable_mapping
 mapped_solutions = []
