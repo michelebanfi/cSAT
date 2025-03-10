@@ -85,11 +85,30 @@ for item in edges:
     elif item["type"] == "o->":
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
     elif item["type"] == "o-o":
+        
+        # (a ∨ b ∨ c ∨ (a ∧ c) ∨ (b ∧ c)) ∧ ¬(a ∧ b)
+        # a = A cause B
+        # b = B cause A
+        # c = A cause B latent
+        
+        # the CNF is (a∨b∨c) ∧ (¬a∨¬b∨c) ∧ (¬a∨¬b∨¬c)
         SATClauses.append([
-            causal_dict[(item['from'], item['to'], 'direct')],
-            causal_dict[(item['to'], item['from'], 'direct')],
-            causal_dict[(item['from'], item['to'], 'latent')],
+            causal_dict[(item['from'], item['to'], 'direct')], 
+            causal_dict[(item['to'], item['from'], 'direct')], 
+            causal_dict[(item['from'], item['to'], 'latent')]
         ])
+        SATClauses.append([
+            -causal_dict[(item['from'], item['to'], 'direct')], 
+            -causal_dict[(item['to'], item['from'], 'direct')], 
+            causal_dict[(item['from'], item['to'], 'latent')]
+        ])
+        SATClauses.append([
+            -causal_dict[(item['from'], item['to'], 'direct')], 
+            -causal_dict[(item['to'], item['from'], 'direct')], 
+            -causal_dict[(item['from'], item['to'], 'latent')]
+        ])
+        
+            
     elif item['type'] == "<->":
         SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])

@@ -144,6 +144,7 @@ if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
 
+
 # just to map back the model
 temp = []
 for item in model:
@@ -155,7 +156,7 @@ if logging: print(f"LOG: Classical SAT solver returned: {is_sat}\n")
 if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
-is_sat, quantum_solutions = solveQuantumSAT(new_cnf, debug=True)
+is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
 
 # print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
 
@@ -169,7 +170,7 @@ if is_sat:
     
     # count the number of valid solutions
     valid_count = sum(validity)
-    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count}\033[0m\n")
+    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count} out of {len(quantum_solutions    )}\033[0m\n")
     
     # Filter out only the valid solutions
     quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
