@@ -9,7 +9,7 @@ import os
 from causallearn.search.ConstraintBased.PC import pc
 
 # utils imports
-from utils import basic_causal_dataframe
+from utils import basic_causal_dataframe, getCausalRelationship, generate_graph_from_causes, visualize_quantum_solutions
 
 # SAT solvers
 from SAT.classical import solveClassicalSAT
@@ -194,112 +194,16 @@ if classical_model in mapped_solutions:
 else:
     if logging: print(f"LOG: The classical solution is NOT in the quantum solutions\n")
     
-def getCausalRelationship(model):
-    causal_relationship = []
-    for item in model:
-        absolute_item = abs(item)
-        if absolute_item in reversed_causal_dict:
-            node1, node2, edge = reversed_causal_dict[absolute_item]
-            causal_relationship.append({
-                "node1": node1,
-                "node2": node2,
-                "edge": edge,
-                "exists": True if item > 0 else False    
-            })
-    return causal_relationship
-
-# Extract graph generation into a reusable function
-def generate_graph_from_causes(direct_causes):
-    nodes = set()
-    for rel in direct_causes:
-        nodes.add(rel["node1"])
-        nodes.add(rel["node2"])
-    graph = pydot.Dot("my_graph", graph_type="digraph")
-    for node in nodes:
-        graph.add_node(pydot.Node(node))
-
-    for rel in direct_causes:
-        if rel["edge"] == "direct" and rel["exists"]:
-            graph.add_edge(pydot.Edge(rel["node1"], rel["node2"]))
-        elif rel["edge"] == "latent" and rel["exists"]:
-            graph.add_edge(pydot.Edge(rel["node2"], rel["node1"], arrowhead="normal"))
-    
-    return graph
-
 # get classical direct cause
-classical_direct_causes = [rel for rel in getCausalRelationship(classical_model) if rel["edge"] == "direct" and rel["exists"]]
+classical_direct_causes = [rel for rel in getCausalRelationship(classical_model, reversed_causal_dict) if rel["edge"] == "direct" and rel["exists"]]
 
 # Generate and save classical solution
 classical_graph = generate_graph_from_causes(classical_direct_causes)
-classical_graph.write_png("output/PC/classical_PC_output.png")
-
-# Process quantum solutions and create visualization grid
-def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
-    # Limit to maximum number of solutions
-    solutions_to_show = min(len(mapped_solutions), max_solutions)
-    solutions = mapped_solutions[:solutions_to_show]
-    
-    # Calculate grid dimensions
-    grid_size = int(np.ceil(np.sqrt(solutions_to_show)))
-    fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
-    
-    # Make axes a 2D array even if it's a single value
-    if solutions_to_show == 1:
-        axes = np.array([[axes]])
-    elif grid_size == 1:
-        axes = axes.reshape(1, -1)
-    
-    # Keep track of temporary files for later cleanup
-    temp_files = []
-    
-    # Generate graph for each solution
-    for i, solution in enumerate(solutions):
-        if i >= solutions_to_show:
-            break
-            
-        row = i // grid_size
-        col = i % grid_size
-        
-        # Get direct causes for this solution
-        quantum_direct_causes = [rel for rel in getCausalRelationship(solution) if rel["edge"] == "direct" and rel["exists"]]
-        
-        # Generate graph
-        graph = generate_graph_from_causes(quantum_direct_causes)
-        
-        # Save to temporary file
-        temp_filename = f"output/PC/temp_quantum_solution_{i}.png"
-        graph.write_png(temp_filename)
-        temp_files.append(temp_filename)
-        
-        # Display in the subplot
-        img = plt.imread(temp_filename)
-        axes[row, col].imshow(img)
-        axes[row, col].set_title(f"Solution {i+1}")
-        axes[row, col].axis('off')
-    
-    # Hide any unused subplots
-    for i in range(solutions_to_show, grid_size * grid_size):
-        row = i // grid_size
-        col = i % grid_size
-        axes[row, col].axis('off')
-    
-    plt.tight_layout()
-    plt.savefig("output/PC/quantum_PC_outputs.png", dpi=300)
-    plt.close(fig)
-    
-    # Clean up temporary files
-    for temp_file in temp_files:
-        try:
-            os.remove(temp_file)
-            if logging: print(f"Removed temporary file: {temp_file}")
-        except Exception as e:
-            if logging: print(f"Warning: Could not remove temporary file {temp_file}: {e}")
-    
-    if logging: print(f"LOG: Generated visualization of {solutions_to_show} quantum solutions\n")
+classical_graph.write_png("output/PC/classical_output.png")
 
 # Generate visualization of quantum solutions
 if mapped_solutions:
-    visualize_quantum_solutions(mapped_solutions)
+    visualize_quantum_solutions(mapped_solutions, "output/PC", reversed_causal_dict, logging=logging)
 
 # After defining generate_graph_from_causes function, add this to visualize the PC output directly
 def visualize_pc_output():
