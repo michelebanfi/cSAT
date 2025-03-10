@@ -91,9 +91,11 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) + 1
     
     qc = QuantumCircuit(n)
+    
+    print(f"LOG: using {n} qubits, with {reps} grover iterations")
     
     qc.h(list(range(n_variables)))
     
@@ -107,11 +109,12 @@ def solveQuantumSAT(cnf, debug=False):
     if debug:  
         circuit_drawer(qc, output='mpl')
         plt.savefig('debug/circuit.png')
+        plt.close()
     
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    result = Sampler().run([optimized_qc], shots=2048).result()
+    result = Sampler().run([optimized_qc], shots=4096).result()
     if debug: print(f"DEBUG: result={result}")
     
     counts = result.quasi_dists[0]
@@ -121,15 +124,19 @@ def solveQuantumSAT(cnf, debug=False):
     counts = counts.binary_probabilities(num_bits=n)
     if debug: print(f"DEBUG: counts={counts}")
     
-    if debug: elbow_plot(counts)
-    
     if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
-    counts = cluster_solutions(counts)
+    temp_counts = cluster_solutions(counts)
     if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
+    
+    if debug: elbow_plot(counts, temp_counts)
+    
+    # doing this just to debug the clustering, sorry for the mess
+    counts = temp_counts
     
     if debug: 
         plot_histogram(counts)
         plt.savefig('debug/histogram.png')
+        plt.close()
     solutions = []
     
     if len(counts) == 0:

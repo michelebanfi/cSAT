@@ -14,6 +14,7 @@ from utils import basic_causal_dataframe
 # SAT solvers
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
+from SAT.validateSolution import validate_all_solutions
 
 
 np.random.seed(0)
@@ -107,7 +108,6 @@ for item in edges:
             -causal_dict[(item['to'], item['from'], 'direct')], 
             -causal_dict[(item['from'], item['to'], 'latent')]
         ])
-        
             
     elif item['type'] == "<->":
         SATClauses.append([-causal_dict[(item['from'], item['to'], 'direct')]])
@@ -161,6 +161,18 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 # Get solutions from quantum SAT solver
 is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
 
+if is_sat:
+    
+    # Validate all solutions, which is an array of boolean values
+    validity = validate_all_solutions(new_cnf, quantum_solutions)
+    
+    # count the number of valid solutions
+    valid_count = sum(validity)
+    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count} out of {len(quantum_solutions    )}\033[0m\n")
+    
+    # Filter out only the valid solutions
+    quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
+
 # Map back all solutions using reverse_cnf_variable_mapping
 mapped_solutions = []
 for solution in quantum_solutions:
@@ -208,7 +220,7 @@ def generate_graph_from_causes(direct_causes):
         if rel["edge"] == "direct" and rel["exists"]:
             graph.add_edge(pydot.Edge(rel["node1"], rel["node2"]))
         elif rel["edge"] == "latent" and rel["exists"]:
-            graph.add_edge(pydot.Edge(rel["node2"], rel["node1"], arrowhead="normal"))
+            graph.add_edge(pydot.Edge(rel["node1"], rel["node2"], style="dotted", arrowhead="none"))
     
     return graph
 
@@ -247,7 +259,7 @@ def visualize_quantum_solutions(mapped_solutions, max_solutions=10):
         col = i % grid_size
         
         # Get direct causes for this solution
-        quantum_direct_causes = [rel for rel in getCausalRelationship(solution) if rel["edge"] == "direct" and rel["exists"]]
+        quantum_direct_causes = [rel for rel in getCausalRelationship(solution) if rel["exists"]]
         
         # Generate graph
         graph = generate_graph_from_causes(quantum_direct_causes)

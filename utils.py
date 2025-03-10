@@ -55,14 +55,17 @@ def cluster_solutions(count: dict):
     else:
         raise Exception("Something went really wrong with the clustering of the solutions.... the means are equal")
     
-def elbow_plot(counts: dict):
+def elbow_plot(counts: dict, cutoff):
     # take all the values from the dictionary, and place them into a numpy array
     values = np.array(list(counts.values()))
+    cutoff = np.array(list(cutoff.values()))
     
     values.sort()
     
     plt.plot(values)
-    plt.show()
+    plt.axvline(x=len(values) - len(cutoff), color='r', linestyle='--')
+    plt.savefig("debug/elbow_plot.png")
+    plt.close()
     
 def structural_check(cnf: list):
     for item in cnf:
