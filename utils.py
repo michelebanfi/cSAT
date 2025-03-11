@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from causallearn.graph.Edge import Edge
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 import os
 import pydot
@@ -50,10 +51,13 @@ def cluster_solutions(count: dict):
     mean_1 = np.mean(list(cluster_1.values()))
     mean_2 = np.mean(list(cluster_2.values()))
     
+    # calculate the Silhouette score using scikit
+    silhouette_avg = silhouette_score(probabilities, kmeans_labels)
+    
     if mean_1 > mean_2:
-        return cluster_1
+        return cluster_1, silhouette_avg
     elif mean_2 > mean_1:  
-        return cluster_2
+        return cluster_2, silhouette_avg
     else:
         raise Exception("Something went really wrong with the clustering of the solutions.... the means are equal")
     

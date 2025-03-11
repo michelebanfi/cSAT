@@ -91,7 +91,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) + 1
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
     
     qc = QuantumCircuit(n)
     
@@ -125,7 +125,10 @@ def solveQuantumSAT(cnf, debug=False):
     if debug: print(f"DEBUG: counts={counts}")
     
     if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
-    temp_counts = cluster_solutions(counts)
+    temp_counts, sil = cluster_solutions(counts)
+    
+    print(f"LOG: Silhouette score: {sil}")
+    
     if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
     
     if debug: elbow_plot(counts, temp_counts)
