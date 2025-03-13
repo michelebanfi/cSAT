@@ -14,7 +14,7 @@ from utils import basic_causal_dataframe, getCausalRelationship, generate_graph_
 # SAT solvers
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
-from SAT.validateSolution import validate_all_solutions
+from SAT.validateSolution import validate_all_solutions, is_valid_o_to_solution, has_path
 
 
 np.random.seed(0)
@@ -79,12 +79,16 @@ reversed_causal_dict = {v: k for k, v in causal_dict.items()}
 
 SATClauses = []
 
+# Special attention needs to be given to the o-> edges. Save the pairs of o-> edges
+o_to_pairs = set()
+
 for item in edges:
     if item["type"] == "->":
         SATClauses.append([causal_dict[(item["from"], item["to"], "direct")]])
         SATClauses.append([-causal_dict[(item["to"], item["from"], "direct")]])
     elif item["type"] == "o->":
         SATClauses.append([-causal_dict[(item['to'], item['from'], 'direct')]])
+        o_to_pairs.add((item['from'], item['to'])) # "to" is not an ancestor of "from"
     elif item["type"] == "o-o":
         
         # (a ∨ b ∨ c ∨ (a ∧ c) ∨ (b ∧ c)) ∧ ¬(a ∧ b)
@@ -161,8 +165,9 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 # Get solutions from quantum SAT solver
 is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
 
+# validate the boolean correctness of the clause
 if is_sat:
-    
+
     # Validate all solutions, which is an array of boolean values
     validity = validate_all_solutions(new_cnf, quantum_solutions)
     
@@ -172,6 +177,8 @@ if is_sat:
     
     # Filter out only the valid solutions
     quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
+    
+# valide the solutions based on the o-> clause. 
 
 # Map back all solutions using reverse_cnf_variable_mapping
 mapped_solutions = []
@@ -191,6 +198,20 @@ if classical_model in mapped_solutions:
     print(f"\033[1m\033[4mLOG: The classical solution is in the quantum solutions!\033[0m\n")
 else:
     if logging: print(f"LOG: The classical solution is NOT in the quantum solutions\n")
+
+# Filter solutions that don't respect the o-> constraints
+before_count = len(mapped_solutions)
+valid_o_to_solutions = []
+for solution in mapped_solutions:
+    if is_valid_o_to_solution(solution, reversed_causal_dict, o_to_pairs):
+        valid_o_to_solutions.append(solution)
+
+mapped_solutions = valid_o_to_solutions
+after_count = len(mapped_solutions)
+
+if logging:
+    print(f"\033[1m\033[4mLOG: Filtered out {before_count - after_count} solutions that violate o-> constraints\033[0m")
+    print(f"\033[1m\033[4mLOG: Remaining valid solutions: {after_count}\033[0m\n")
     
 # get classical direct cause
 classical_direct_causes = [rel for rel in getCausalRelationship(classical_model, reversed_causal_dict) if rel["edge"] == "direct" and rel["exists"]]

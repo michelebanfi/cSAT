@@ -91,7 +91,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables))
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) + 1
     
     qc = QuantumCircuit(n)
     
@@ -114,7 +114,7 @@ def solveQuantumSAT(cnf, debug=False):
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    result = Sampler().run([optimized_qc], shots=4096).result()
+    result = Sampler().run([optimized_qc], shots=1024).result()
     if debug: print(f"DEBUG: result={result}")
     
     counts = result.quasi_dists[0]

@@ -50,3 +50,49 @@ def validate_all_solutions(cnf: list[list], solutions: list[list]) -> list[bool]
         list[bool]: List of validation results (True for valid, False for invalid)
     """
     return [validate(cnf, solution) for solution in solutions]
+
+# Validate solutions based on the o-> constraint
+def has_path(graph, start, end, visited=None):
+    """
+    Check if there's a path from start to end in the graph using DFS.
+    Returns True if there is a path (meaning end is an ancestor of start).
+    """
+    if visited is None:
+        visited = set()
+    
+    if start == end:
+        return True
+    
+    visited.add(start)
+    
+    # If start node has no outgoing edges
+    if start not in graph:
+        return False
+    
+    for neighbor in graph[start]:
+        if neighbor not in visited and has_path(graph, neighbor, end, visited):
+            return True
+    
+    return False
+
+def is_valid_o_to_solution(solution, reversed_causal_dict, o_to_pairs):
+    """
+    Check if a solution respects the o-> constraints.
+    A o-> B means B is not an ancestor of A.
+    """
+    # Build the directed graph from the solution
+    direct_causes = {}
+    for var in solution:
+        if var > 0:  # Only consider positive literals
+            from_node, to_node, edge_type = reversed_causal_dict[abs(var)]
+            if edge_type == "direct":
+                if from_node not in direct_causes:
+                    direct_causes[from_node] = []
+                direct_causes[from_node].append(to_node)
+    
+    # For each o-> pair, check that there's no path from to_node to from_node
+    for from_node, to_node in o_to_pairs:
+        if has_path(direct_causes, to_node, from_node):
+            return False
+    
+    return True
