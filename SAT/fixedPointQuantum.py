@@ -75,7 +75,11 @@ def create_circuit(qc, n_variables, cnf, n, alpha, beta):
     oracle(qc, n_variables, beta,  cnf, n)
     diffuser(qc, n_variables, alpha)
 
-def createCircuit(n_variables, l_iterations, cnf, n, delta = 0.1):
+def arccot(x):
+    """Compute the inverse cotangent of x."""
+    return np.arctan(1.0/x)
+
+def createCircuit(n_variables, l_iterations, cnf, n, debug, delta = 0.5):
     qc = QuantumCircuit(n)
     
     qc.h(list(range(n_variables)))
@@ -84,24 +88,44 @@ def createCircuit(n_variables, l_iterations, cnf, n, delta = 0.1):
     # L = 2l + 1
     L = 2 * l_iterations + 1
     
-    gamma_inv = chebyshev(1/L, 1/delta)
+    gamma_inv = 1/chebyshev(1/L, 1/delta)
+    gamma = 1/gamma_inv
+    print(f"DEBUG: gamma_inv={gamma_inv}, gamma={gamma}")
     
     
-    print("ALPHA               BETA")
+    # if debug: print("ALPHA               BETA")
     
+    
+    alpha_values = []
+    beta_values = []
     for i in range(1, l_iterations + 1):
-        alpha_i = 2 * np.arctan2(1, np.tan(2*np.pi * i / L)) * np.sqrt(1 - 1/(gamma_inv**2))
-        beta_i = -2 * np.arctan2(1, np.tan(2*np.pi *(L-i) / L)) * np.sqrt(1 - 1/(gamma_inv**2))
+        # Using arccot function for clarity
+        alpha_i = 2 * arccot(np.tan(2*np.pi * i / L) * np.sqrt(abs(1 - gamma**2)))
+        # beta_i = -2 * arccot(np.tan(2*np.pi *(L-i) / L)) * np.sqrt(1 - 1/(gamma_inv**2))
         
-        print(alpha_i, beta_i)
+        alpha_values.append(alpha_i)
     
-        create_circuit(qc, n_variables, cnf, n, alpha_i, beta_i)
+    for j in range(1, l_iterations + 1):
+        beta_j = -alpha_values[l_iterations - j]
+        beta_values.append(beta_j)
+        
+    for i in range(l_iterations):
+        print(f"DEBUG: alpha={alpha_values[i]}, beta={beta_values[i]}")
+        create_circuit(qc, n_variables, cnf, n, alpha_values[i], beta_values[i])
     
     qc.barrier()
     
+    # plot alphas and betas
+    if debug: 
+        plt.plot(alpha_values, label="Alpha")
+        plt.plot(beta_values, label="Beta")
+        plt.legend()
+        plt.savefig("debug/alphas-betas.png")
+        plt.close()
+    
     return qc
 
-def solveFixedQuantunSAT(cnf, debug=False):
+def solveFixedQuantunSAT(cnf, l_iterations, debug=False):
     
     # as usual structural check for the CNF
     structural_check(cnf)
@@ -116,9 +140,9 @@ def solveFixedQuantunSAT(cnf, debug=False):
     
     n = n_variables + n_clauses
     
-    l_iterations = int(np.ceil(np.sqrt(2**n_variables) / 4))
-    print(f"LOG: using {n_variables} variables and {l_iterations} iterations")
-    qc = createCircuit(n_variables, l_iterations, cnf, n)
+    # l_iterations = int(np.ceil(np.sqrt(2**n_variables) / 4))
+    # print(f"LOG: using {n_variables} variables and {l_iterations} iterations")
+    qc = createCircuit(n_variables, l_iterations, cnf, n, debug)
     
     qc.measure_all()
     
@@ -136,7 +160,22 @@ def solveFixedQuantunSAT(cnf, debug=False):
     
     counts = counts.binary_probabilities(num_bits=n)
     
+    # print(counts)
+    
+    # create the dictionary of the counts
+    dicty = {}
+    
+    for bistring, prob in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+        
+        bistring = bistring[n_clauses:]
+        bistring = bistring[::-1]
+        
+        ## we will ad later everything.
+        dicty[bistring] = prob
+    
     if debug: 
         plot_histogram(counts)
         plt.savefig("debug/fixed-histogram.png")
         plt.close()
+    
+    return dicty
