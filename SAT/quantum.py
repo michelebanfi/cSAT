@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from qiskit import QuantumCircuit, transpile
-from qiskit.primitives import Sampler
+    from qiskit.primitives import Sampler
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit.visualization import circuit_drawer
 
