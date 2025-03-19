@@ -91,7 +91,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) + 1
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) 
     
     qc = QuantumCircuit(n)
     
@@ -114,7 +114,7 @@ def solveQuantumSAT(cnf, debug=False):
     # remove barriers from the circuit
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    result = Sampler().run([optimized_qc], shots=1024).result()
+    result = Sampler().run([optimized_qc], shots=2048).result()
     if debug: print(f"DEBUG: result={result}")
     
     counts = result.quasi_dists[0]
@@ -134,7 +134,7 @@ def solveQuantumSAT(cnf, debug=False):
     if debug: elbow_plot(counts, temp_counts)
     
     # doing this just to debug the clustering, sorry for the mess
-    counts = temp_counts
+    # counts = temp_counts
     
     if debug: 
         plot_histogram(counts)

@@ -79,7 +79,7 @@ def arccot(x):
     """Compute the inverse cotangent of x."""
     return np.arctan(1.0/x)
 
-def createCircuit(n_variables, l_iterations, cnf, n, debug, delta = 0.5):
+def createCircuit(n_variables, l_iterations, cnf, n, debug, delta):
     qc = QuantumCircuit(n)
     
     qc.h(list(range(n_variables)))
@@ -125,7 +125,7 @@ def createCircuit(n_variables, l_iterations, cnf, n, debug, delta = 0.5):
     
     return qc
 
-def solveFixedQuantunSAT(cnf, l_iterations, debug=False):
+def solveFixedQuantunSAT(cnf, l_iterations, debug=False, delta=0.9):
     
     # as usual structural check for the CNF
     structural_check(cnf)
@@ -142,7 +142,7 @@ def solveFixedQuantunSAT(cnf, l_iterations, debug=False):
     
     # l_iterations = int(np.ceil(np.sqrt(2**n_variables) / 4))
     # print(f"LOG: using {n_variables} variables and {l_iterations} iterations")
-    qc = createCircuit(n_variables, l_iterations, cnf, n, debug)
+    qc = createCircuit(n_variables, l_iterations, cnf, n, debug, delta=delta)
     
     qc.measure_all()
     
