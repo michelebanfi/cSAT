@@ -38,9 +38,10 @@ for i in range(1, max_rep):
     #sol = solveFixedQuantunSAT(new_cnf, i, debug=True, delta=0.9)
     sol = solvePiThirdQuantumSAT(new_cnf, i, debug=True)
     
+    print(sol['0000101'])
     
     # count the prob of '101'
-    true_sol = '101'
+    true_sol = '0000101'
     if true_sol in sol:
         probs.append(sol[true_sol])
     else:
