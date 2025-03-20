@@ -46,15 +46,14 @@ def get_repr(qc, is_inv, clause, i):
     for var_idx in flipped_qubits:
         qc.x(var_idx)
     
-    qc.barrier()
-    
 def oracle(qc, n_variables, beta, cnf, n):
     # print(f"DEBUG: n_variables={n_variables}, cnf={cnf}, n={n}")
     for i, clause in enumerate(cnf):
         # print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
         get_repr(qc, False, clause, n_variables + i)
 
-    qc.mcp(np.pi, list(range(n_variables,n-1)), n-1)
+    qc.mcx(list(range(n_variables, n)), n)
+    #qc.mcp(np.pi, list(range(n_variables,n-1)), n-1)
 
     # Uncompute ancilla qubits
     for i in range(len(cnf)-1, -1, -1):
@@ -99,7 +98,6 @@ def createCircuit(n_variables, l, cnf, n, debug, delta):
     qc = QuantumCircuit(n + 1)
     
     qc.h(list(range(n_variables)))
-    qc.barrier()
     
     # L = 2l + 1
     L = 2 * l + 1
@@ -107,7 +105,7 @@ def createCircuit(n_variables, l, cnf, n, debug, delta):
     gamma_inv = chebyshev(1/L, 1/delta)
     omega = 1 - chebyshev(1/L, 1/delta)**(-2)
     gamma = 1/gamma_inv
-    print(f"DEBUG: gamma_inv={gamma_inv}, gamma={gamma}")
+    # print(f"DEBUG: gamma_inv={gamma_inv}, gamma={gamma}")
     
     alpha_values = mpm.zeros(1, l)
     beta_values = mpm.zeros(1, l)
@@ -134,7 +132,7 @@ def createCircuit(n_variables, l, cnf, n, debug, delta):
     
     return qc
 
-def solveFixedQuantunSAT(cnf, l_iterations, debug=False, delta=0.9):
+def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
     
     # as usual structural check for the CNF
     structural_check(cnf)
@@ -157,7 +155,7 @@ def solveFixedQuantunSAT(cnf, l_iterations, debug=False, delta=0.9):
     
     if debug:
         circuit_drawer(qc, output="mpl")
-        plt.savefig("debug/fixed-scircuit.png")
+        plt.savefig("debug/fixed-circuit.png")
         plt.close()
     
     qc = RemoveBarriers()(qc)

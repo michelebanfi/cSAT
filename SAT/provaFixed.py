@@ -13,24 +13,13 @@ from qiskit_aer import AerSimulator
 def Chbshv_poly(L, x): # Lth Chebyshev polynomial of the first kind
     return mpm.cos(L * mpm.acos(x))
 
-def oracle(qc,n, indices_to_mark):
-    # create a quantum circuit on n qubits
-    index_bit =  format(indices_to_mark, "0{:d}b".format(n))
-    # print(index_bit)
-
-    for i in range(n):
-        if index_bit[i] == '0':
-            qc.x(n-i) # Measurement order is the reversed qubit order
-    qc.mcx(list(range(n,0,-1)), 0)
-    for i in range(n): # Redo the NOT gates applied on control qubits
-        if index_bit[i] == '0':
-            qc.x(n-i) # Measurement order is the reversed qubit order
-
+def oracle(qc, n):
+    qc.x(0)
+    qc.mcx(list(range(0, n)), n)
+    qc.x(0)
     
+def FP_Grover_circuit(n, itr, d, return_params = True):
     
-def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
-    
-    print(d)
     # Does not include measurements to allow state tomography
     l = itr
     L = 2*l+1
@@ -52,60 +41,60 @@ def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
     alpha = np.array(alpha.tolist()[0], dtype=complex).real
     beta = np.array(beta.tolist()[0], dtype=complex).real
     
-    r = QuantumRegister(n+1)
-    qc = QuantumCircuit(r)
+    qc = QuantumCircuit(n + 1)
     # Initialize |s>
     for i in range(n):
-        qc.h(n-i) # Measurement order is the reversed qubit order
+        qc.h(i) # Measurement order is the reversed qubit order
     for i in range(itr):
         # St(beta)
         qc.barrier()
-        oracle(qc,n, indices_to_mark) # turn state into |T>|1> + sum_i (|w_i>|0>) where w_i are NOT target state, T is the target state
+        oracle(qc, n) 
         qc.barrier()
-        qc.p(beta[i],0) # when beta[i] = pi, this is simply a Z gate, so only has phase kickback on |T>|1> but not |w_i>|0>
+        qc.p(beta[i], n) 
         qc.barrier()
-        oracle(qc,n, indices_to_mark)  # to uncompute the ancillary
+        oracle(qc, n) 
         # St(alpha)
         qc.barrier()
         
         for q in range(n):
-            qc.h(n-q)
+            qc.h(q)
         
         qc.barrier()
         
-        for q in range(n - 1):
-            qc.x(n-q)
+        for q in range(n-1):
+            qc.x(q)
         
-        qc.barrier()
+        qc.p(-alpha[i]/2, n-1)
         
-        qc.p(-alpha[i]/2, 1)
-        qc.mcx(list(range(n, 1, -1)), 1)
-        qc.mcx(list(range(n, 1, -1)), 0)
-        qc.p(-alpha[i]/2, 1)
-        qc.p(-alpha[i]/2, 0)
-        qc.mcx(list(range(n, 1, -1)), 1)
-        qc.mcx(list(range(n, 1, -1)), 0)
-        for q in range(n - 1):
-            qc.x(n-q)
-        qc.p(alpha[i], 1)
+        qc.mcx(list(range(0, n-1)), n-1)
+        qc.mcx(list(range(0, n-1,)), n)
+        qc.p(-alpha[i]/2, n)
+        qc.p(-alpha[i]/2, n-1)
+        qc.mcx(list(range(0, n-1)), n-1)
+        qc.mcx(list(range(0, n-1,)), n)
+        
+        for q in range(n-1):
+            qc.x(q)
+        
+        qc.p(alpha[i], n-1)
+        
         qc.barrier()
         for q in range(n):
-            qc.h(n-q)
+            qc.h(q)
     if return_params:
         return qc, (gamma_inverse, 1/2**n, omega, alpha, beta)
     else:
         return qc
     
 if __name__ == '__main__':
-    n = 3
-    indices_to_mark = 2
+    n = 2
     itr = 1
     d = mpm.sqrt(0.1) 
-    for i in range(1, 3):
-        qc, (gamma_inverse, lam, omega, alpha, beta) = FP_Grover_circuit(n, indices_to_mark, i, d)
+    for i in range(1, 4):
+        qc, (gamma_inverse, lam, omega, alpha, beta) = FP_Grover_circuit(n, i, d)
         qc.measure_all()
         circuit_drawer(qc, output='mpl')
-        plt.savefig('debug/circuit.png')
+        plt.savefig('debug/fixed-reversed-circuit.png')
         plt.close()
         
         qc = RemoveBarriers()(qc)
@@ -115,6 +104,6 @@ if __name__ == '__main__':
         result = simulator.run(optimized_qc, shots=1024).result()
         counts = result.get_counts()
         
-        # print(counts)
-        print(counts['0100']/1024)
+        print(counts['010'])
+        # print(counts['0100']/1024)
         # print(lam, omega)

@@ -4,6 +4,7 @@ from SAT.fixedPointQuantum import solveFixedQuantunSAT
 from SAT.piThirdQuantum import solvePiThirdQuantumSAT
 
 import matplotlib.pyplot as plt
+import mpmath as mpm
 
 # new_cnf = [[1, 5, 2], [-1, -5, 2], [-1, -5, -2], [3, 8, 4], [-3, -8, 4], [-3, -8, -4], [6, 9, 7], [-6, -9, 7], [-6, -9, -7]]
 new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
@@ -35,11 +36,10 @@ shouldBeOne = []
 solutions = {}
 
 for i in range(1, max_rep):
-    #sol = solveFixedQuantunSAT(new_cnf, i, debug=True, delta=0.9)
-    sol = solveFixedQuantunSAT(new_cnf, i, debug=True, delta=0.9)
+    sol = solveFixedQuantunSAT(new_cnf, i, mpm.sqrt(0.1), debug=True)
     
     # print(sol)
-    # print(sol['101'])
+    print(sol['101'])
     
     # count the prob of '101'
     true_sol = '101'
