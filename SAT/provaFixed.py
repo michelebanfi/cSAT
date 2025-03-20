@@ -7,60 +7,76 @@ import matplotlib.pyplot as plt
 from qiskit.primitives import Sampler
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit_aer import AerSimulator
+from qiskit import ClassicalRegister
 
 
 
 def Chbshv_poly(L, x): # Lth Chebyshev polynomial of the first kind
     return mpm.cos(L * mpm.acos(x))
 
-def oracle(qc, n, ancilla):
+def oracle(qc, n, ancilla, beta):
     qc.x(0)
     qc.x(1)
-    qc.x(1)
-    qc.mcx(list(range(0, n)), ancilla)
-    qc.x(ancilla)
+    qc.mcx([0, 1], n)
+    qc.x(n)
     qc.x(0)
     qc.x(1)
-    qc.x(1)
+    # qc.cx(n, n + ancilla)
+    # qc.mcx(list(range(0, n)), n + ancilla)
+    #qc.x(n)
+    qc.barrier()
+    qc.x(2)
+    qc.mcx([2, 0], n + 1)
+    qc.x(n+1)
+    qc.x(2)
+    qc.barrier()
+    
+    qc.mcx([1, 2], n + 2)
+    qc.x(n+2)
     qc.barrier()
     
     qc.x(0)
+    qc.x(2)
+    qc.mcx([0, 2], n + 3)
+    qc.x(n+3)
     qc.x(0)
-    qc.x(1)
-    qc.mcx(list(range(0, n)), ancilla + 1)
-    qc.x(ancilla + 1)
-    qc.x(0)
-    qc.x(0)
-    qc.x(1)
+    qc.x(2)
     qc.barrier()
-    qc.mcp(np.pi, [ancilla, ancilla + 1], ancilla + 2)
-    qc.barrier()    
-    qc.x(0)
-    qc.x(0)
-    qc.x(1)
-    qc.x(ancilla + 1)
-    qc.mcx(list(range(0, n)), ancilla + 1)    
-    qc.x(0)
-    qc.x(0)
-    qc.x(1)
     
     qc.barrier()
-    qc.x(0)
-    qc.x(1)
-    qc.x(1)
-    qc.x(ancilla)
-    qc.mcx(list(range(0, n)), ancilla)
-    qc.x(0)
-    qc.x(1)
-    qc.x(1)
+    qc.mcx(list(range(n, n + ancilla)), n + ancilla)
+    # qc.x(n+ancilla)
     qc.barrier()
-
+    qc.p(beta, n + ancilla)
+    qc.barrier()
+    # qc.x(n+ancilla)
+    qc.mcx(list(range(n, n + ancilla)), n + ancilla)
+    qc.barrier()
     
-
+    qc.x(n+3)
+    qc.x(0)
+    qc.x(2)
+    qc.mcx([0, 2], n + 3)
+    qc.x(0)
+    qc.x(2)
+    qc.barrier()
     
-    qc.mcx(list(range(0, n)), n + ancilla)
-    # qc.x(0)
-    # qc.x(1)
+    qc.x(n+2)
+    qc.mcx([1, 2], n + 2)
+    qc.barrier()
+    
+    qc.x(2)
+    qc.x(n+1)
+    qc.mcx([2, 0], n + 1)
+    qc.x(2)
+    qc.barrier()
+    
+    qc.x(1)
+    qc.x(0)
+    qc.x(n)
+    qc.mcx([0, 1], n)
+    qc.x(1)
+    qc.x(0)
     
 def FP_Grover_circuit(n, itr, d, return_params = True):
     
@@ -84,7 +100,7 @@ def FP_Grover_circuit(n, itr, d, return_params = True):
     omega = np.array([omega], dtype=complex)[0].real
     alpha = np.array(alpha.tolist()[0], dtype=complex).real
     beta = np.array(beta.tolist()[0], dtype=complex).real
-    ancilla = 2
+    ancilla = 4
     qc = QuantumCircuit(n + ancilla + 1)
     # Initialize |s>
     for i in range(n):
@@ -92,11 +108,11 @@ def FP_Grover_circuit(n, itr, d, return_params = True):
     for i in range(itr):
         # St(beta)
         qc.barrier()
-        oracle(qc, n, ancilla) 
+        oracle(qc, n, ancilla, beta[i]) 
         qc.barrier()
-        qc.p(beta[i], n + ancilla) 
-        qc.barrier()
-        oracle(qc, n, ancilla) 
+        # qc.p(beta[i], n + ancilla) 
+        # qc.barrier()
+        # oracle(qc, n, ancilla) 
         # St(alpha)
         qc.barrier()
         
@@ -131,11 +147,14 @@ def FP_Grover_circuit(n, itr, d, return_params = True):
         return qc
     
 if __name__ == '__main__':
-    n = 2
+    n = 3
     itr = 1
     d = mpm.sqrt(0.1) 
-    for i in range(1, 4):
+    for i in range(1, 2):
         qc, (gamma_inverse, lam, omega, alpha, beta) = FP_Grover_circuit(n, i, d)
+        # cr = ClassicalRegister(n)
+        # qc.add_register(cr)
+        # qc.measure(range(n), range(n))
         qc.measure_all()
         circuit_drawer(qc, output='mpl')
         plt.savefig('debug/fixed-reversed-circuit.png')
@@ -148,7 +167,13 @@ if __name__ == '__main__':
         result = simulator.run(optimized_qc, shots=1024).result()
         counts = result.get_counts()
         
+        # for key, value in counts.items():
+        #     # print jus the last n qubits
+        #     print(key[-n:], value)
         print(counts)
+        print("-----------------")
+        
+        # print(counts)
         # print(counts['0010'])
         # print(counts['0100']/1024)
         # print(lam, omega)

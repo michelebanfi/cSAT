@@ -7,6 +7,7 @@ from qiskit.visualization import circuit_drawer
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit.primitives import Sampler
 from qiskit.visualization import plot_histogram
+from qiskit_aer import AerSimulator
 
 from utils import structural_check
 
@@ -46,27 +47,37 @@ def get_repr(qc, is_inv, clause, i):
     for var_idx in flipped_qubits:
         qc.x(var_idx)
     
+    qc.barrier()
+    
 def oracle(qc, n_variables, beta, cnf, n):
     # print(f"DEBUG: n_variables={n_variables}, cnf={cnf}, n={n}")
     for i, clause in enumerate(cnf):
         # print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
         get_repr(qc, False, clause, n_variables + i)
+    qc.barrier()
 
     qc.mcx(list(range(n_variables, n)), n)
-    #qc.mcp(np.pi, list(range(n_variables,n-1)), n-1)
+    # qc.x(n)
+    # qc.mcp(beta, list(range(n_variables,n)), n)
+    qc.p(beta, n)
+    #qc.x(n)
+    qc.mcx(list(range(n_variables, n)), n)
 
+    qc.barrier()
     # Uncompute ancilla qubits
     for i in range(len(cnf)-1, -1, -1):
         get_repr(qc, True, cnf[i], n_variables + i)
-
+    
+    qc.barrier()
+    
 def create_circuit(qc, n_variables, cnf, n, alpha, beta):
     qc.barrier()
     oracle(qc, n_variables, beta,  cnf, n)
     qc.barrier()
-    qc.p(beta, n)
-    qc.barrier()
-    oracle(qc, n_variables, beta, cnf, n)
-    qc.barrier()
+    # qc.p(beta, n)
+    # qc.barrier()
+    # oracle(qc, n_variables, beta, cnf, n)
+    # qc.barrier()
     
     qc.h(list(range(n_variables)))
     qc.barrier()
@@ -80,7 +91,7 @@ def create_circuit(qc, n_variables, cnf, n, alpha, beta):
     qc.barrier()
     
     qc.p(-alpha/2, n_variables - 1)
-    qc.p(alpha/2, n)
+    qc.p(-alpha/2, n)
     qc.barrier()
     qc.mcx(list(range(n_variables - 1)), n_variables - 1)
     qc.mcx(list(range(n_variables - 1)), n)
@@ -160,11 +171,9 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
     
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    
     result = Sampler().run([optimized_qc], shots=1024).result()
-    
+
     counts = result.quasi_dists[0]
-    
     counts = counts.binary_probabilities(num_bits=n)
     
     # print(counts)

@@ -119,7 +119,8 @@ def solveFP(cnf, reps, d, debug=False):
             qc.x(n-q)
         qc.p(alpha[i], 1)
         qc.barrier()
-        qc.h(list(range(n_variables)))
+        for q in range(n):
+            qc.h(n-q)
         
     circuit_drawer(qc, output='mpl')
     plt.savefig('debug/circuit.png')
