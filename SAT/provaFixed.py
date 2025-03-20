@@ -13,10 +13,54 @@ from qiskit_aer import AerSimulator
 def Chbshv_poly(L, x): # Lth Chebyshev polynomial of the first kind
     return mpm.cos(L * mpm.acos(x))
 
-def oracle(qc, n):
+def oracle(qc, n, ancilla):
     qc.x(0)
-    qc.mcx(list(range(0, n)), n)
+    qc.x(1)
+    qc.x(1)
+    qc.mcx(list(range(0, n)), ancilla)
+    qc.x(ancilla)
     qc.x(0)
+    qc.x(1)
+    qc.x(1)
+    qc.barrier()
+    
+    qc.x(0)
+    qc.x(0)
+    qc.x(1)
+    qc.mcx(list(range(0, n)), ancilla + 1)
+    qc.x(ancilla + 1)
+    qc.x(0)
+    qc.x(0)
+    qc.x(1)
+    qc.barrier()
+    qc.mcp(np.pi, [ancilla, ancilla + 1], ancilla + 2)
+    qc.barrier()    
+    qc.x(0)
+    qc.x(0)
+    qc.x(1)
+    qc.x(ancilla + 1)
+    qc.mcx(list(range(0, n)), ancilla + 1)    
+    qc.x(0)
+    qc.x(0)
+    qc.x(1)
+    
+    qc.barrier()
+    qc.x(0)
+    qc.x(1)
+    qc.x(1)
+    qc.x(ancilla)
+    qc.mcx(list(range(0, n)), ancilla)
+    qc.x(0)
+    qc.x(1)
+    qc.x(1)
+    qc.barrier()
+
+    
+
+    
+    qc.mcx(list(range(0, n)), n + ancilla)
+    # qc.x(0)
+    # qc.x(1)
     
 def FP_Grover_circuit(n, itr, d, return_params = True):
     
@@ -40,19 +84,19 @@ def FP_Grover_circuit(n, itr, d, return_params = True):
     omega = np.array([omega], dtype=complex)[0].real
     alpha = np.array(alpha.tolist()[0], dtype=complex).real
     beta = np.array(beta.tolist()[0], dtype=complex).real
-    
-    qc = QuantumCircuit(n + 1)
+    ancilla = 2
+    qc = QuantumCircuit(n + ancilla + 1)
     # Initialize |s>
     for i in range(n):
         qc.h(i) # Measurement order is the reversed qubit order
     for i in range(itr):
         # St(beta)
         qc.barrier()
-        oracle(qc, n) 
+        oracle(qc, n, ancilla) 
         qc.barrier()
-        qc.p(beta[i], n) 
+        qc.p(beta[i], n + ancilla) 
         qc.barrier()
-        oracle(qc, n) 
+        oracle(qc, n, ancilla) 
         # St(alpha)
         qc.barrier()
         
@@ -67,11 +111,11 @@ def FP_Grover_circuit(n, itr, d, return_params = True):
         qc.p(-alpha[i]/2, n-1)
         
         qc.mcx(list(range(0, n-1)), n-1)
-        qc.mcx(list(range(0, n-1,)), n)
-        qc.p(-alpha[i]/2, n)
+        qc.mcx(list(range(0, n-1,)), n + ancilla)
+        qc.p(-alpha[i]/2, n + ancilla)
         qc.p(-alpha[i]/2, n-1)
         qc.mcx(list(range(0, n-1)), n-1)
-        qc.mcx(list(range(0, n-1,)), n)
+        qc.mcx(list(range(0, n-1,)), n + ancilla)
         
         for q in range(n-1):
             qc.x(q)
@@ -104,6 +148,7 @@ if __name__ == '__main__':
         result = simulator.run(optimized_qc, shots=1024).result()
         counts = result.get_counts()
         
-        print(counts['010'])
+        print(counts)
+        # print(counts['0010'])
         # print(counts['0100']/1024)
         # print(lam, omega)
