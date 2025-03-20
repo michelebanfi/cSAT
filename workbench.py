@@ -25,7 +25,7 @@ new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
 
 # new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
 # new_cnf = [[1, 2], [-1, -2]]
-max_rep = 2
+max_rep = 5
 probs = []
 meanOthers = []
 shouldBeOne = []
@@ -36,12 +36,13 @@ solutions = {}
 
 for i in range(1, max_rep):
     #sol = solveFixedQuantunSAT(new_cnf, i, debug=True, delta=0.9)
-    sol = solvePiThirdQuantumSAT(new_cnf, i, debug=True)
+    sol = solveFixedQuantunSAT(new_cnf, i, debug=True, delta=0.9)
     
-    print(sol['0000101'])
+    # print(sol)
+    # print(sol['101'])
     
     # count the prob of '101'
-    true_sol = '0000101'
+    true_sol = '101'
     if true_sol in sol:
         probs.append(sol[true_sol])
     else:

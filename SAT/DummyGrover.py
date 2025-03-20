@@ -16,7 +16,8 @@ def Chbshv_poly(L, x): # Lth Chebyshev polynomial of the first kind
 def oracle(qc,n, indices_to_mark):
     # create a quantum circuit on n qubits
     index_bit =  format(indices_to_mark, "0{:d}b".format(n))
-    qc.barrier()
+    # print(index_bit)
+
     for i in range(n):
         if index_bit[i] == '0':
             qc.x(n-i) # Measurement order is the reversed qubit order
@@ -24,7 +25,7 @@ def oracle(qc,n, indices_to_mark):
     for i in range(n): # Redo the NOT gates applied on control qubits
         if index_bit[i] == '0':
             qc.x(n-i) # Measurement order is the reversed qubit order
-    qc.barrier()
+
     
     
 def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
@@ -56,15 +57,25 @@ def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
         qc.h(n-i) # Measurement order is the reversed qubit order
     for i in range(itr):
         # St(beta)
+        qc.barrier()
         oracle(qc,n, indices_to_mark) # turn state into |T>|1> + sum_i (|w_i>|0>) where w_i are NOT target state, T is the target state
+        qc.barrier()
         qc.p(beta[i],0) # when beta[i] = pi, this is simply a Z gate, so only has phase kickback on |T>|1> but not |w_i>|0>
+        qc.barrier()
         oracle(qc,n, indices_to_mark)  # to uncompute the ancillary
         # St(alpha)
+        qc.barrier()
+        
         for q in range(n):
             qc.h(n-q)
+        
         qc.barrier()
-        for q in range(n-1):
+        
+        for q in range(n - 1):
             qc.x(n-q)
+        
+        qc.barrier()
+        
         qc.p(-alpha[i]/2, 1)
         qc.mcx(list(range(n, 1, -1)), 1)
         qc.mcx(list(range(n, 1, -1)), 0)
@@ -72,7 +83,7 @@ def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
         qc.p(-alpha[i]/2, 0)
         qc.mcx(list(range(n, 1, -1)), 1)
         qc.mcx(list(range(n, 1, -1)), 0)
-        for q in range(n-1):
+        for q in range(n - 1):
             qc.x(n-q)
         qc.p(alpha[i], 1)
         qc.barrier()
@@ -84,11 +95,11 @@ def FP_Grover_circuit(n, indices_to_mark, itr, d, return_params = True):
         return qc
     
 if __name__ == '__main__':
-    n = 2
+    n = 3
     indices_to_mark = 2
     itr = 1
     d = mpm.sqrt(0.1) 
-    for i in range(1, 5):
+    for i in range(1, 2):
         qc, (gamma_inverse, lam, omega, alpha, beta) = FP_Grover_circuit(n, indices_to_mark, i, d)
         qc.measure_all()
         circuit_drawer(qc, output='mpl')
@@ -102,6 +113,6 @@ if __name__ == '__main__':
         result = simulator.run(optimized_qc, shots=1024).result()
         counts = result.get_counts()
         
-        
-        print(counts['100']/1024)
+        # print(counts)
+        print(counts['0100']/1024)
         # print(lam, omega)

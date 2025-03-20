@@ -1,4 +1,5 @@
 import numpy as np
+import mpmath as mpm
 import matplotlib.pyplot as plt
 
 from qiskit import QuantumCircuit, transpile
@@ -9,11 +10,8 @@ from qiskit.visualization import plot_histogram
 
 from utils import structural_check
 
-def chebyshev(n, x):
-    if abs(x) <= 1:
-        return np.cos(n * np.arccos(x))
-    else:
-        return np.cosh(n * np.arccosh(x))
+def chebyshev(L, x):
+    return mpm.cos(L * mpm.acos(x))
 
 def get_repr(qc, is_inv, clause, i):
     # Track which qubits we need to flip back later
@@ -56,64 +54,75 @@ def oracle(qc, n_variables, beta, cnf, n):
         # print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
         get_repr(qc, False, clause, n_variables + i)
 
-    qc.mcp(beta, list(range(n_variables,n-1)), n-1)
-    qc.barrier()
+    qc.mcp(np.pi, list(range(n_variables,n-1)), n-1)
 
     # Uncompute ancilla qubits
     for i in range(len(cnf)-1, -1, -1):
         get_repr(qc, True, cnf[i], n_variables + i)
 
-def diffuser(qc, n, alpha):
-    qc.h(range(n))
-    qc.x(range(n))
-    qc.mcp(alpha, list(range(n-1)), n - 1)
-    qc.x(range(n))
-    qc.h(range(n))
-    qc.barrier()
-
 def create_circuit(qc, n_variables, cnf, n, alpha, beta):
+    qc.barrier()
     oracle(qc, n_variables, beta,  cnf, n)
-    diffuser(qc, n_variables, alpha)
+    qc.barrier()
+    qc.p(beta, n)
+    qc.barrier()
+    oracle(qc, n_variables, beta, cnf, n)
+    qc.barrier()
+    
+    qc.h(list(range(n_variables)))
+    qc.barrier()
+    qc.x(list(range(n_variables - 1)))
+    qc.barrier()
+    
+    qc.p(-alpha/2, n_variables - 1)
+    qc.barrier()
+    qc.mcx(list(range(n_variables - 1)), n_variables - 1)
+    qc.mcx(list(range(n_variables - 1)), n)
+    qc.barrier()
+    
+    qc.p(-alpha/2, n_variables - 1)
+    qc.p(alpha/2, n)
+    qc.barrier()
+    qc.mcx(list(range(n_variables - 1)), n_variables - 1)
+    qc.mcx(list(range(n_variables - 1)), n)
+    
+    qc.p(alpha, n_variables - 1)
+    
+    qc.barrier()
+    qc.x(list(range(n_variables - 1)))
+    qc.barrier()
+    qc.h(list(range(n_variables)))
+    qc.barrier()
+    
 
-def arccot(x):
-    """Compute the inverse cotangent of x."""
-    return np.arctan(1.0/x)
-
-def createCircuit(n_variables, l_iterations, cnf, n, debug, delta):
-    qc = QuantumCircuit(n)
+def createCircuit(n_variables, l, cnf, n, debug, delta):
+    qc = QuantumCircuit(n + 1)
     
     qc.h(list(range(n_variables)))
     qc.barrier()
     
     # L = 2l + 1
-    L = 2 * l_iterations + 1
+    L = 2 * l + 1
     
-    gamma_inv = 1/chebyshev(1/L, 1/delta)
+    gamma_inv = chebyshev(1/L, 1/delta)
+    omega = 1 - chebyshev(1/L, 1/delta)**(-2)
     gamma = 1/gamma_inv
     print(f"DEBUG: gamma_inv={gamma_inv}, gamma={gamma}")
     
-    
-    # if debug: print("ALPHA               BETA")
-    
-    
-    alpha_values = []
-    beta_values = []
-    for i in range(1, l_iterations + 1):
-        # Using arccot function for clarity
-        alpha_i = 2 * arccot(np.tan(2*np.pi * i / L) * np.sqrt(abs(1 - gamma**2)))
-        # beta_i = -2 * arccot(np.tan(2*np.pi *(L-i) / L)) * np.sqrt(1 - 1/(gamma_inv**2))
+    alpha_values = mpm.zeros(1, l)
+    beta_values = mpm.zeros(1, l)
+    for i in range(l):
+        alpha_values[i] = 2*mpm.acot(mpm.tan(2*mpm.pi*(i+1)/L) * mpm.sqrt(1-1/gamma_inv**2))
+        beta_values[l-(i+1)+1-1] = -alpha_values[i]
         
-        alpha_values.append(alpha_i)
-    
-    for j in range(1, l_iterations + 1):
-        beta_j = -alpha_values[l_iterations - j]
-        beta_values.append(beta_j)
-        
-    for i in range(l_iterations):
-        print(f"DEBUG: alpha={alpha_values[i]}, beta={beta_values[i]}")
+    gamma_inv = np.array([gamma_inv], dtype=complex)[0].real
+    omega = np.array([omega], dtype=complex)[0].real
+    alpha_values = np.array(alpha_values.tolist()[0], dtype=complex).real
+    beta_values = np.array(beta_values.tolist()[0], dtype=complex).real
+
+    for i in range(l):
         create_circuit(qc, n_variables, cnf, n, alpha_values[i], beta_values[i])
     
-    qc.barrier()
     
     # plot alphas and betas
     if debug: 
