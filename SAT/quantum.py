@@ -91,7 +91,7 @@ def solveQuantumSAT(cnf, debug=False):
     
     if debug: print(f"DEBUG: {np.pi/4 * math.sqrt(2**n_variables)} reps")
     
-    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) 
+    reps = math.ceil(np.pi/4 * math.sqrt(2**n_variables)) + 1
     
     qc = QuantumCircuit(n)
     

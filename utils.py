@@ -107,8 +107,8 @@ def generate_graph_from_causes(direct_causes):
     for rel in direct_causes:
         if rel["edge"] == "direct" and rel["exists"]:
             graph.add_edge(pydot.Edge(rel["node1"], rel["node2"]))
-        elif rel["edge"] == "latent" and rel["exists"]:
-            graph.add_edge(pydot.Edge(rel["node1"], rel["node2"], style="dotted", arrowhead="none"))
+        # elif rel["edge"] == "latent" and rel["exists"]:
+        #     graph.add_edge(pydot.Edge(rel["node1"], rel["node2"], style="dotted", arrowhead="none"))
     
     return graph
 
