@@ -14,6 +14,7 @@ from utils import basic_causal_dataframe, getCausalRelationship, generate_graph_
 # SAT solvers
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
+from SAT.fixedPointQuantum import solveFixedQuantunSAT
 from SAT.validateSolution import validate_all_solutions, is_valid_o_to_solution, has_path
 
 
@@ -163,7 +164,9 @@ if logging: print(f"LOG: Classical SAT solver returned: {is_sat}\n")
 if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
-is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
+# is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
+is_sat, quantum_solutions = solveFixedQuantunSAT(new_cnf, 8, np.sqrt(0.1))
+
 
 # validate the boolean correctness of the clause
 if is_sat:
