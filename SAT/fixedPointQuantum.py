@@ -9,7 +9,7 @@ from qiskit.primitives import Sampler
 from qiskit.visualization import plot_histogram
 from qiskit_aer import AerSimulator
 
-from utils import structural_check
+from utils import structural_check, elbow_plot, cluster_solutions
 
 def chebyshev(L, x):
     return mpm.cos(L * mpm.acos(x))
@@ -176,22 +176,46 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
     counts = result.quasi_dists[0]
     counts = counts.binary_probabilities(num_bits=n)
     
-    # print(counts)
+    if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
+    temp_counts, sil = cluster_solutions(counts)
     
-    # create the dictionary of the counts
-    dicty = {}
+    print(f"LOG: Silhouette score: {sil}")
     
-    for bistring, prob in sorted(counts.items(), key=lambda x: x[1], reverse=True):
-        
-        bistring = bistring[n_clauses:]
-        bistring = bistring[::-1]
-        
-        ## we will ad later everything.
-        dicty[bistring] = prob
+    if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
+    
+    if debug: elbow_plot(counts, temp_counts)
+    
+    # doing this just to debug the clustering, sorry for the mess
+    # counts = temp_counts
     
     if debug: 
         plot_histogram(counts)
-        plt.savefig("debug/fixed-histogram.png")
+        plt.savefig('debug/fixed-histogram.png')
         plt.close()
+    solutions = []
     
-    return dicty
+    if len(counts) == 0:
+        return False, []
+    else:
+        is_sat = True
+        for bitstring, prob in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+            # print(f"DEBUG: bitstring={bitstring}, prob={prob}")
+            # remove the first n_clauses bits
+            bitstring = bitstring[n_clauses:]
+            # print(f"DEBUG: bitstring={bitstring}")
+            # reverse the bitstring ordering
+            bitstring = bitstring[::-1]
+            # print(f"DEBUG: bitstring={bitstring}")
+            solution = []
+            for i in range(n_variables):
+                # print(i)
+                var_num = i + 1  # Convert to 1-indexed
+                if bitstring[i] == '0':
+                    solution.append(-var_num)
+                else:
+                    solution.append(var_num)
+            solutions.append(solution)
+    
+    # print(f"DEBUG: solutions={solutions}")
+        
+    return is_sat, solutions
