@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import numpy.random as npr
 
-def generate_mixed_causal_dataframe(n_samples: int = 1000) -> pd.DataFrame:
+def generate_mixed_causal_dataframe(n_samples: int = 2000) -> pd.DataFrame:
     """
     Generate a synthetic causal dataset with mixed variable types
     
@@ -98,4 +98,4 @@ def demonstrate_mixed_variable_causal_data():
     print(df.describe(include='all'))
 
 # Run the demonstration
-demonstrate_mixed_variable_causal_data()
+# demonstrate_mixed_variable_causal_data()
