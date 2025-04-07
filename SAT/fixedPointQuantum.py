@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, transpile
 from qiskit.visualization import circuit_drawer
 from qiskit.transpiler.passes import RemoveBarriers
-from qiskit.primitives import Sampler
+from qiskit_ibm_runtime import SamplerV2 as Sampler
 from qiskit.visualization import plot_histogram
 from qiskit_aer import AerSimulator
+from qiskit_ibm_runtime import QiskitRuntimeService, Session
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 from utils import structural_check, elbow_plot, cluster_solutions
 
@@ -143,7 +145,25 @@ def createCircuit(n_variables, l, cnf, n, debug, delta):
     
     return qc
 
-def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
+def run_on_ibm(qc):
+    service = QiskitRuntimeService()
+
+    backend = service.least_busy(operational=True, simulator=False)
+    pm = generate_preset_pass_manager(target=backend.target, optimization_level=0)
+    grover = pm.run(qc)
+
+    with Session(backend=backend) as session:
+        sampler = Sampler(mode=session)
+        job = sampler.run([grover], shots=10024)
+        pub_result = job.result()
+        print(f"Sampler job ID: {job.job_id()}")
+        counts = pub_result[0].data.meas.get_counts()
+        
+        probabilities = {key: value / sum(counts.values()) for key, value in counts.items()}
+
+    return probabilities
+
+def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False, simulation=True):
     
     # as usual structural check for the CNF
     structural_check(cnf)
@@ -158,9 +178,15 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
     
     n = n_variables + n_clauses
     
-    # l_iterations = int(np.ceil(np.sqrt(2**n_variables) / 4))
-    # print(f"LOG: using {n_variables} variables and {l_iterations} iterations")
+    print(f"LOG: Circuit with {n} qubits")
+    
+    if n > 20 and simulation:
+        print("LOG: Too many qubits, aborting")
+        return False, []
+    
     qc = createCircuit(n_variables, l_iterations, cnf, n, debug, delta=delta)
+    
+    print(f"LOG: Circuit created, circuit depth: {qc.depth()}")
     
     qc.measure_all()
     
@@ -171,10 +197,15 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False):
     
     qc = RemoveBarriers()(qc)
     optimized_qc = transpile(qc, optimization_level=3)
-    result = Sampler().run([optimized_qc], shots=1024).result()
-
-    counts = result.quasi_dists[0]
-    counts = counts.binary_probabilities(num_bits=n)
+    
+    if simulation:
+        result = Sampler().run([optimized_qc], shots=1024).result()
+        counts = result.quasi_dists[0]
+        counts = counts.binary_probabilities(num_bits=n)
+    else:
+        # Run on IBM quantum hardware
+        print("LOG: Running on IBM Quantum Hardware...")
+        counts = run_on_ibm(optimized_qc)
     
     if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
     temp_counts, sil = cluster_solutions(counts)
