@@ -1,7 +1,6 @@
 from SAT.quantum import solveQuantumSAT
 from SAT.classical import solveClassicalSAT
 from SAT.fixedPointQuantum import solveFixedQuantunSAT
-from SAT.piThirdQuantum import solvePiThirdQuantumSAT
 
 import matplotlib.pyplot as plt
 import mpmath as mpm

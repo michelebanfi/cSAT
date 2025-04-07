@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 from qiskit import QuantumCircuit, transpile
 from qiskit.visualization import circuit_drawer
 from qiskit.transpiler.passes import RemoveBarriers
-from qiskit_ibm_runtime import SamplerV2 as Sampler
+from qiskit_ibm_runtime import SamplerV2
+from qiskit.primitives import Sampler
 from qiskit.visualization import plot_histogram
 from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import QiskitRuntimeService, Session
@@ -153,7 +154,7 @@ def run_on_ibm(qc):
     grover = pm.run(qc)
 
     with Session(backend=backend) as session:
-        sampler = Sampler(mode=session)
+        sampler = SamplerV2(mode=session)
         job = sampler.run([grover], shots=10024)
         pub_result = job.result()
         print(f"Sampler job ID: {job.job_id()}")
@@ -206,6 +207,9 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False, simulation=True)
         # Run on IBM quantum hardware
         print("LOG: Running on IBM Quantum Hardware...")
         counts = run_on_ibm(optimized_qc)
+    
+    # this statememnt is just for printing the solutions as function of the repetitions
+    # return True, counts
     
     if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
     temp_counts, sil = cluster_solutions(counts)

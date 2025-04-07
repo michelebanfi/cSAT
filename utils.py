@@ -68,8 +68,12 @@ def elbow_plot(counts: dict, cutoff):
     
     values.sort()
     
-    plt.plot(values)
+    plt.scatter(x=list(range(len(values))), y=values)
     plt.axvline(x=len(values) - len(cutoff), color='r', linestyle='--')
+    plt.title("Outcome probabilities")
+    plt.xlabel("Outcome")
+    plt.ylabel("Probability")
+    plt.xticks([])
     plt.savefig("debug/elbow_plot.png")
     plt.close()
     
