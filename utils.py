@@ -12,16 +12,19 @@ next_var_id = 1
 
 # create causal dataframe
 def basic_causal_dataframe() -> pd.DataFrame:
+    np.random.seed(42)  # Set seed for reproducibility
     X = np.random.uniform(size=1000)
-    eps = np.random.normal(size=1000)
-    # eps = np.zeros(1000)
+    eps_Y = np.random.normal(0, 0.1, size=1000)  # Add noise to Y
+    eps_Z = np.random.normal(0, 0.1, size=1000)  # Add noise to Z
+    eps_W = np.random.normal(0, 0.1, size=1000)  # Add noise to W
     delta = np.random.uniform(size=1000)
-    # delta = np.zeros(1000)
-    Y = -7 * X + 0.5 * delta
-    Z = 2 * X + Y + eps
+    
+    Y = -7 * X + 0.5 * delta + eps_Y
+    Z = 2 * X + Y + eps_Z
+    W = 3 * X + 2 * Y + eps_W
 
     # Create DataFrame with named variables
-    return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z})
+    return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z, 'W': W})
 
 def cluster_solutions(count: dict):
     # create an array of probabilites maining the same order
