@@ -214,11 +214,14 @@ def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False, simulation=True)
     if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
     temp_counts, sil = cluster_solutions(counts)
     
+    
+    
     print(f"LOG: Silhouette score: {sil}")
     
     if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
     
     if debug: elbow_plot(counts, temp_counts)
+    
     
     # doing this just to debug the clustering, sorry for the mess
     # counts = temp_counts

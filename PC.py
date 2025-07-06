@@ -158,7 +158,7 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
 # is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
-is_sat, quantum_solutions = solveFixedQuantunSAT(new_cnf, 8, np.sqrt(0.1), debug=True)
+is_sat, quantum_solutions = solveFixedQuantunSAT(new_cnf, 8, np.sqrt(0.1), debug=True, simulation=True)
 
 # print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
 

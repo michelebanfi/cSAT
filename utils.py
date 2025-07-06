@@ -14,9 +14,9 @@ next_var_id = 1
 def basic_causal_dataframe() -> pd.DataFrame:
     X = np.random.uniform(size=1000)
     eps = np.random.normal(size=1000)
-    eps = np.zeros(1000)
+    # eps = np.zeros(1000)
     delta = np.random.uniform(size=1000)
-    delta = np.zeros(1000)
+    # delta = np.zeros(1000)
     Y = -7 * X + 0.5 * delta
     Z = 2 * X + Y + eps
 
@@ -67,6 +67,11 @@ def elbow_plot(counts: dict, cutoff):
     cutoff = np.array(list(cutoff.values()))
     
     values.sort()
+    
+    for i in range(len(values)):
+        print(f"({i}, {values[i]}),", end=' ')
+    
+    print(len(values) - len(cutoff))
     
     plt.scatter(x=list(range(len(values))), y=values)
     plt.axvline(x=len(values) - len(cutoff), color='r', linestyle='--')

@@ -5,28 +5,28 @@ from SAT.fixedPointQuantum import solveFixedQuantunSAT
 import matplotlib.pyplot as plt
 import mpmath as mpm
 
-# new_cnf = [[1, 5, 2], [-1, -5, 2], [-1, -5, -2], [3, 8, 4], [-3, -8, 4], [-3, -8, -4], [6, 9, 7], [-6, -9, 7], [-6, -9, -7]]
-new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
+new_cnf = [[1, 5, 2], [-1, -5, 2], [-1, -5, -2], [3, 8, 4], [-3, -8, 4], [-3, -8, -4], [6, 9, 7], [-6, -9, 7], [-6, -9, -7]]
+# new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
 # new_cnf = [[2, 3], [1, 4]]
 
 is_sat, model = solveClassicalSAT(new_cnf)
 
-is_sat, quantum_solutions = solveQuantumSAT(new_cnf, debug=True)
-is_sat, sol = solveFixedQuantunSAT(new_cnf, 8, mpm.sqrt(0.1), debug=True)
+# is_sat, quantum_solutions = solveQuantumSAT(new_cnf, debug=True)
+is_sat, sol = solveFixedQuantunSAT(new_cnf, 8, mpm.sqrt(0.1), debug=True, simulation=True)
 # is_sat, sol = solvePiThirdQuantumSAT(new_cnf, debug=True)
-print(model)
+# print(model)
 
 # print(quantum_solutions)
 
-if model in quantum_solutions:
-    print("The standard quantum solution is correct")
-else:
-    print("The standard quantum solution is incorrect")
+# if model in quantum_solutions:
+#     print("The standard quantum solution is correct")
+# else:
+#     print("The standard quantum solution is incorrect")
     
-if model in sol:
-    print("The fixed-point quantum solution is correct")
-else:
-    print("The fixed-point quantum solution is incorrect")
+# if model in sol:
+#     print("The fixed-point quantum solution is correct")
+# else:
+#     print("The fixed-point quantum solution is incorrect")
 
 # new_cnf = [[1, 2], [-1, 3], [-2, -3], [1, 3]]
 # new_cnf = [[1, 2], [-1, -2]]
