@@ -1,9 +1,9 @@
-# basic imports
 import numpy as np
 import pydot
 import matplotlib.pyplot as plt
 from colorsys import hls_to_rgb
 import os
+from itertools import permutations
 
 # causallearn imports
 from causallearn.search.ConstraintBased.PC import pc
@@ -82,8 +82,9 @@ if logging:  print(f"LOG: The extracted edges are: {edges}\n")
 causal_dict = {}
 for node1 in node_mapping:
     for node2 in node_mapping:
-        for edge in ['direct']:
-            causal_dict[(node1, node2, edge)] = len(causal_dict) + 1
+        if node1 != node2:
+            for edge in ['direct']:
+                causal_dict[(node1, node2, edge)] = len(causal_dict) + 1
             
 reversed_causal_dict = {v: k for k, v in causal_dict.items()}
             
@@ -106,9 +107,48 @@ for item in edges:
         # there MUST be a direct edge from node1 to node2 and a direct edge from node2 to node1
         SATClauses.append([causal_dict[(item['from'], item['to'], 'direct')]])
         SATClauses.append([causal_dict[(item['to'], item['from'], 'direct')]])
-        
-        
-# print(f"LOG: The SAT clauses are: {SATClauses}\n")
+
+## --- New Acyclicity Constraint Section ---
+def find_all_cycles(nodes, causal_dict):
+    """
+    Identifies all possible cycles of length 3 or more in the graph.
+    A cycle is a path that starts and ends at the same node.
+    """
+    all_cycles = []
+    for length in range(3, len(nodes) + 1):
+        for start_node_tuple in permutations(nodes, length):
+            cycle = list(start_node_tuple) + [start_node_tuple[0]]
+            is_a_cycle = True
+            for i in range(len(cycle) - 1):
+                try:
+                    # Check if a directed edge variable exists in our causal dictionary
+                    _ = causal_dict[(cycle[i], cycle[i+1], 'direct')]
+                except KeyError:
+                    is_a_cycle = False
+                    break
+            if is_a_cycle:
+                all_cycles.append(cycle)
+    return all_cycles
+
+# Get all nodes from the node_mapping
+all_nodes = list(node_mapping.keys())
+
+# Find all potential cycles in the graph
+all_possible_cycles = find_all_cycles(all_nodes, causal_dict)
+
+if logging: print(f"LOG: Found {len(all_possible_cycles)} possible cycles to enforce acyclicity on.\n")
+
+# Add acyclicity constraints to the SAT clauses
+for cycle in all_possible_cycles:
+    cycle_clause = []
+    for i in range(len(cycle) - 1):
+        # The clause is a disjunction of the negation of the edge variables
+        # This means at least one of the edges in the cycle must NOT exist
+        cycle_clause.append(-causal_dict[(cycle[i], cycle[i+1], 'direct')])
+    SATClauses.append(cycle_clause)
+
+## --- End of New Acyclicity Constraint Section ---
+
 
 # iterate through the clauses and count the number of variables
 variable_set = set()
@@ -126,9 +166,6 @@ for i, var in enumerate(variable_set):
 # reverse the mapping
 reverse_cnf_variable_mapping = {v: k for k, v in cnf_variable_mapping.items()}
 
-# print(f"LOG: The variable mapping is: {cnf_variable_mapping}\n")
-# print(f"LOG: The reverse variable mapping is: {reverse_cnf_variable_mapping}\n")
-
 # so the new cnf will be
 new_cnf = []
 for clause in SATClauses:
@@ -138,9 +175,7 @@ for clause in SATClauses:
         new_clause.append(new_var if var > 0 else -new_var)
     new_cnf.append(new_clause)
     
-if logging: print(f"LOG: The new CNF is: {new_cnf}\n")
-# new_cnf = [[1, -1], [2, -2], [3, -3], [4, -4]]
-
+if logging: print(f"LOG: The new CNF with acyclicity constraints is: {new_cnf}\n")
 
 # solve the classical SAT
 is_sat, model = solveClassicalSAT(new_cnf)
@@ -148,8 +183,9 @@ is_sat, model = solveClassicalSAT(new_cnf)
 
 # just to map back the model
 temp = []
-for item in model:
-    temp.append(reverse_cnf_variable_mapping[abs(item)] if item > 0 else -reverse_cnf_variable_mapping[abs(item)])
+if is_sat and model:
+    for item in model:
+        temp.append(reverse_cnf_variable_mapping[abs(item)] if item > 0 else -reverse_cnf_variable_mapping[abs(item)])
 classical_model = temp
 
 # output the results:
@@ -158,11 +194,7 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
 # is_sat, quantum_solutions = solveQuantumSAT(new_cnf)
-is_sat, quantum_solutions = solveFixedQuantunSAT(new_cnf, 8, np.sqrt(0.1), debug=True, simulation=True)
-
-# print(f"DEBUG: Quantum SAT solver returned: {quantum_solutions}\n")
-
-# print(reverse_cnf_variable_mapping)
+is_sat, quantum_solutions = solveFixedQuantunSAT(new_cnf, 8, np.sqrt(0.1), debug=True)
 
 # check for quantum solutions validity
 if is_sat:
@@ -172,7 +204,7 @@ if is_sat:
     
     # count the number of valid solutions
     valid_count = sum(validity)
-    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count} out of {len(quantum_solutions    )}\033[0m\n")
+    print(f"\033[1m\033[4mLOG: The number of valid quantum solutions is: {valid_count} out of {len(quantum_solutions)}\033[0m\n")
     
     # Filter out only the valid solutions
     quantum_solutions = [solution for solution, valid in zip(quantum_solutions, validity) if valid]
@@ -182,7 +214,6 @@ mapped_solutions = []
 for solution in quantum_solutions:
     mapped_solution = []
     for item in solution:
-        # print(item)
         mapped_var = reverse_cnf_variable_mapping[abs(item)]
         mapped_solution.append(mapped_var if item > 0 else -mapped_var)
     mapped_solutions.append(mapped_solution)
@@ -200,8 +231,9 @@ else:
 classical_direct_causes = [rel for rel in getCausalRelationship(classical_model, reversed_causal_dict) if rel["edge"] == "direct" and rel["exists"]]
 
 # Generate and save classical solution
-classical_graph = generate_graph_from_causes(classical_direct_causes)
-classical_graph.write_png("output/PC/classical_output.png")
+if classical_direct_causes:
+    classical_graph = generate_graph_from_causes(classical_direct_causes)
+    classical_graph.write_png("output/PC/classical_output.png")
 
 # Generate visualization of quantum solutions
 if mapped_solutions:
@@ -231,4 +263,3 @@ def visualize_pc_output():
 
 # Generate the PC algorithm output visualization
 visualize_pc_output()
-
