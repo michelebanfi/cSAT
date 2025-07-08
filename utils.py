@@ -187,3 +187,36 @@ def visualize_quantum_solutions(mapped_solutions, output_dir, reversed_causal_di
             if logging: print(f"Warning: Could not remove temporary file {temp_file}: {e}")
     
     if logging: print(f"LOG: Generated visualization of {solutions_to_show} quantum solutions\n")
+    
+def is_valid_o_to_solution(solution, reversed_causal_dict, o_to_pairs, all_nodes):
+    """
+    Checks if a given SAT solution respects the o-> constraint (no path from 'to' to 'from').
+    This is a critical step for ensuring the resulting graphs are valid MAGs.
+    """
+    # Build a directed graph from the current solution for path checking
+    adj = {node: [] for node in all_nodes}
+    for var in solution:
+        if var > 0:
+            from_node, to_node, edge_type = reversed_causal_dict[abs(var)]
+            if edge_type == 'direct':
+                adj[from_node].append(to_node)
+
+    # For each o-> constraint (e.g., F o-> T), check for a forbidden path from T to F
+    for f_node, t_node in o_to_pairs:
+        if has_path(adj, t_node, f_node):
+            return False # This solution is invalid because it implies T is an ancestor of F
+            
+    return True # All o-> constraints are respected
+
+def validate_all_solutions(cnf, solutions):
+    """Validates a list of solutions against a CNF formula."""
+    validity = []
+    for sol in solutions:
+        is_valid = True
+        solution_set = set(sol)
+        for clause in cnf:
+            if not any(literal in solution_set for literal in clause):
+                is_valid = False
+                break
+        validity.append(is_valid)
+    return validity
