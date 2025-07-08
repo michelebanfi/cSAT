@@ -24,7 +24,7 @@ def basic_causal_dataframe() -> pd.DataFrame:
     W = 3 * X + 2 * Y + eps_W
 
     # Create DataFrame with named variables
-    return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z, 'W': W})
+    return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z})
 
 def cluster_solutions(count: dict):
     # create an array of probabilites maining the same order
