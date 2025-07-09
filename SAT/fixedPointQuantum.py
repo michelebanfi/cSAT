@@ -153,14 +153,14 @@ def run_on_ibm(qc):
     pm = generate_preset_pass_manager(target=backend.target, optimization_level=0)
     grover = pm.run(qc)
 
-    with Session(backend=backend) as session:
-        sampler = SamplerV2(mode=session)
-        job = sampler.run([grover], shots=10024)
-        pub_result = job.result()
-        print(f"Sampler job ID: {job.job_id()}")
-        counts = pub_result[0].data.meas.get_counts()
-        
-        probabilities = {key: value / sum(counts.values()) for key, value in counts.items()}
+    # with Session(backend=backend) as session:
+    sampler = SamplerV2(mode=backend)
+    job = sampler.run([grover], shots=10024)
+    pub_result = job.result()
+    print(f"Sampler job ID: {job.job_id()}")
+    counts = pub_result[0].data.meas.get_counts()
+    
+    probabilities = {key: value / sum(counts.values()) for key, value in counts.items()}
 
     return probabilities
 

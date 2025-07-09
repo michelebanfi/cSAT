@@ -145,30 +145,30 @@ def generate_graph_from_causes(direct_causes):
     
     return graph
 
-def generate_graph_from_causes(causes, all_nodes, filename):
-    """Generates a pydot graph from a list of causal relationships (for the classical solution)."""
-    graph = pydot.Dot(graph_type='digraph', rankdir='LR', label="Classical Solution")
+# def generate_graph_from_causes(causes, all_nodes, filename):
+#     """Generates a pydot graph from a list of causal relationships (for the classical solution)."""
+#     graph = pydot.Dot(graph_type='digraph', rankdir='LR', label="Classical Solution")
     
-    for node_name in all_nodes:
-        graph.add_node(pydot.Node(node_name)) # , shape='circle', style='filled', fillcolor='lightgreen'
+#     for node_name in all_nodes:
+#         graph.add_node(pydot.Node(node_name)) # , shape='circle', style='filled', fillcolor='lightgreen'
         
-    # print(causes)
+#     # print(causes)
         
-    for cause in causes:
-        if cause['exists']:
-            if cause['edge'] == 'direct':
-                edge = pydot.Edge(cause['node1'], cause['node2'], dir='forward', color='black', penwidth=1.5)
-                graph.add_edge(edge)
-            elif cause['edge'] == 'latent':
-                edge = pydot.Edge(cause['node1'], cause['node2'], dir='both', color='red', style='dashed', penwidth=1.5)
-                graph.add_edge(edge)
+#     for cause in causes:
+#         if cause['exists']:
+#             if cause['edge'] == 'direct':
+#                 edge = pydot.Edge(cause['node1'], cause['node2'], dir='forward', color='black', penwidth=1.5)
+#                 graph.add_edge(edge)
+#             elif cause['edge'] == 'latent':
+#                 edge = pydot.Edge(cause['node1'], cause['node2'], dir='both', color='red', style='dashed', penwidth=1.5)
+#                 graph.add_edge(edge)
     
-    try:
-        graph.write_png(filename)
-        print(f"LOG: Saved classical graph to {filename}")
-    except Exception as e:
-        print(f"Error saving graph {filename}: {e}")
-    return graph
+#     try:
+#         graph.write_png(filename)
+#         print(f"LOG: Saved classical graph to {filename}")
+#     except Exception as e:
+#         print(f"Error saving graph {filename}: {e}")
+#     return graph
 
 def visualize_quantum_solutions(mapped_solutions, output_dir, reversed_causal_dict, max_solutions=10, logging=True):
     # Limit to maximum number of solutions

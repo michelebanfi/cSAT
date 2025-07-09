@@ -105,6 +105,8 @@ for item in edges:
     # A o-> B (Not B -> A)
     elif item["type"] == "o->":
         SATClauses.append([-causal_dict[(t, f, 'direct')]])
+        SATClauses.append([causal_dict[(f, t, 'direct')]])
+        # SATClauses.append([-causal_dict[(f, t, 'latent')]])
         o_to_pairs.add((f, t)) # Constraint: No directed path from t to f
 
     # A o-o B (A->B or B->A or A<->B, but not A->B and B->A)
