@@ -17,6 +17,7 @@ from utils import basic_causal_dataframe, getCausalRelationship, generate_graph_
 from SAT.classical import solveClassicalSAT
 from SAT.quantum import solveQuantumSAT
 from SAT.fixedPointQuantumAcyclic import solveFixedQuantumSAT
+# from SAT.fixedPointQuantum import solveFixedQuantumSAT
 from SAT.validateSolution import validate_all_solutions
 
 # set the seed for reproducibility
@@ -155,7 +156,8 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
 # is_sat, quantum_solutions = solveQuantumSAT(final_cnf)
-is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, variable_names, causal_dict, cnf_variable_mapping, 2, np.sqrt(0.1), debug=True)
+# is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, variable_names, causal_dict, cnf_variable_mapping, 4, np.sqrt(0.1), debug=True)
+is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, 4, np.sqrt(0.1), debug=True)
 
 # check for quantum solutions validity
 if is_sat:

@@ -164,7 +164,7 @@ def run_on_ibm(qc):
 
     return probabilities
 
-def solveFixedQuantunSAT(cnf, l_iterations, delta, debug=False, simulation=True):
+def solveFixedQuantumSAT(cnf, l_iterations, delta, debug=False, simulation=True):
     
     # as usual structural check for the CNF
     structural_check(cnf)
