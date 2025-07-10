@@ -12,40 +12,40 @@ from SAT.validateSolution import has_path
 next_var_id = 1
 
 # create causal dataframe
-# def basic_causal_dataframe() -> pd.DataFrame:
-#     np.random.seed(42)  # Set seed for reproducibility
-#     X = np.random.uniform(size=1000)
-#     eps_Y = np.random.normal(0, 0.1, size=1000)  # Add noise to Y
-#     eps_Z = np.random.normal(0, 0.1, size=1000)  # Add noise to Z
-#     eps_W = np.random.normal(0, 0.1, size=1000)  # Add noise to W
-#     delta = np.random.uniform(size=1000)
+def basic_causal_dataframe() -> pd.DataFrame:
+    np.random.seed(42)  # Set seed for reproducibility
+    X = np.random.uniform(size=1000)
+    eps_Y = np.random.normal(0, 0.1, size=1000)  # Add noise to Y
+    eps_Z = np.random.normal(0, 0.1, size=1000)  # Add noise to Z
+    eps_W = np.random.normal(0, 0.1, size=1000)  # Add noise to W
+    delta = np.random.uniform(size=1000)
     
-#     # Y = -7 * X + 0.5 * delta + eps_Y
-#     # Z = 2 * X + Y + eps_Z
-#     # W = 3 * X + 2 * Y + eps_W
+    Y = -7 * X + 0.5 * delta + eps_Y
+    Z = 2 * X + Y + eps_Z
+    W = 3 * X + 2 * Y + eps_W
 
-#     Y = X + eps_Y
-#     Z = X + Y + eps_Z
-#     W = 3 * X + 2 * Y + eps_W
+    # Y = X + eps_Y
+    # Z = X + Y + eps_Z
+    # W = 3 * X + 2 * Y + eps_W
 
-#     # Create DataFrame with named variables
-#     return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z})
+    # Create DataFrame with named variables
+    return pd.DataFrame({'X': X, 'Y': Y, 'Z': Z})
 
-def basic_causal_dataframe():
-    """Creates a sample dataframe with known causal structure for testing."""
-    np.random.seed(42)
-    # Structure: Z -> X, Z -> Y, L -> X, L -> Y (L is latent)
-    # This should result in X o-o Y from FCI
-    size = 500
-    Z = np.random.randn(size, 1)
-    L = np.random.randn(size, 1) # Latent variable
-    X = 0.8 * Z + 0.7 * L + np.random.randn(size, 1) * 0.3
-    Y = 0.6 * Z - 0.5 * L + np.random.randn(size, 1) * 0.3
-    A = 0.9 * X + np.random.randn(size, 1) * 0.2 # X -> A
-    B = 0.7 * Y + np.random.randn(size, 1) * 0.2 # Y -> B
+# def basic_causal_dataframe():
+#     """Creates a sample dataframe with known causal structure for testing."""
+#     np.random.seed(42)
+#     # Structure: Z -> X, Z -> Y, L -> X, L -> Y (L is latent)
+#     # This should result in X o-o Y from FCI
+#     size = 500
+#     Z = np.random.randn(size, 1)
+#     L = np.random.randn(size, 1) # Latent variable
+#     X = 0.8 * Z + 0.7 * L + np.random.randn(size, 1) * 0.3
+#     Y = 0.6 * Z - 0.5 * L + np.random.randn(size, 1) * 0.3
+#     A = 0.9 * X + np.random.randn(size, 1) * 0.2 # X -> A
+#     B = 0.7 * Y + np.random.randn(size, 1) * 0.2 # Y -> B
 
-    data = pd.DataFrame(np.hstack([X, Y, Z, A]), columns=['X', 'Y', 'Z', 'A'])
-    return data
+#     data = pd.DataFrame(np.hstack([X, Y, Z, A]), columns=['X', 'Y', 'Z', 'A'])
+#     return data
 
 def cluster_solutions(count: dict):
     # create an array of probabilites maining the same order
