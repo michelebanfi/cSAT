@@ -156,8 +156,8 @@ if logging: print(f"LOG: The model is: {classical_model}\n")
 
 # Get solutions from quantum SAT solver
 # is_sat, quantum_solutions = solveQuantumSAT(final_cnf)
-# is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, variable_names, causal_dict, cnf_variable_mapping, 4, np.sqrt(0.1), debug=True)
-is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, 4, np.sqrt(0.1), debug=True)
+is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, variable_names, causal_dict, cnf_variable_mapping, 4, np.sqrt(0.1), debug=True)
+# is_sat, quantum_solutions = solveFixedQuantumSAT(final_cnf, 4, np.sqrt(0.1), debug=True)
 
 # check for quantum solutions validity
 if is_sat:

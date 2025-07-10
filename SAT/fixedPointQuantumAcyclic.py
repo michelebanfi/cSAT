@@ -2,7 +2,7 @@ import numpy as np
 import mpmath as mpm
 import matplotlib.pyplot as plt
 
-from qiskit import QuantumCircuit, transpile
+from qiskit import QuantumCircuit, transpile, QuantumRegister, AncillaRegister, ClassicalRegister
 from qiskit.visualization import circuit_drawer
 from qiskit.transpiler.passes import RemoveBarriers
 from qiskit_ibm_runtime import SamplerV2
@@ -15,446 +15,239 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from utils import structural_check, elbow_plot, cluster_solutions
 
 def chebyshev(L, x):
+    """Calculates the Chebyshev polynomial of the first kind."""
     return mpm.cos(L * mpm.acos(x))
 
-def get_repr(qc, is_inv, clause, i):
-    # Track which qubits we need to flip back later
-    flipped_qubits = []
-    
-    # For OR logic in CNF, we need to detect when the clause is NOT satisfied
-    # This happens when all literals in the clause are false
-    for var in clause:
-        var_idx = abs(var) - 1  # Convert to 0-indexed
+def build_cnf_oracle(cnf, n_variables, n_clauses):
+    """Builds the CNF checking logic as a separate, reversible circuit."""
+    edge_q = QuantumRegister(n_variables, name='edge')
+    clause_a = AncillaRegister(n_clauses, name='clause')
+    cnf_ok_a = AncillaRegister(1, name='cnf_ok')
+    qc = QuantumCircuit(edge_q, clause_a, cnf_ok_a, name="CNF_Oracle")
+
+    for i, clause in enumerate(cnf):
+        for literal in clause:
+            if literal > 0:
+                qc.x(edge_q[abs(literal) - 1])
         
-        # For positive literals, we want to detect when they're false
-        # For negative literals, we want to detect when they're true
-        if var > 0:  # Only flip POSITIVE variables
-            qc.x(var_idx)
-            flipped_qubits.append(var_idx)
-    
-    # Control qubits for the multi-controlled X gate
-    control_qubits = [abs(var) - 1 for var in clause]
-    
-    # For uncomputing, invert the ancilla if needed
-    if is_inv:
-        qc.x(i)
-    
-    # Apply multi-controlled-X to detect when all literals evaluate to false
-    qc.mcx(control_qubits, i)
-    
-    # For computing, invert the ancilla to make it 1 when clause is satisfied
-    if not is_inv:
-        qc.x(i)
-    
-    # Restore the original state of the qubits
-    for var_idx in flipped_qubits:
-        qc.x(var_idx)
-    
-    qc.barrier()
-    
-#@def get_cycle(qc, is_inv):
-    
-    
-# def oracle(qc, n_variables, beta, cnf, n):
-#     # print(f"DEBUG: n_variables={n_variables}, cnf={cnf}, n={n}")
-#     for i, clause in enumerate(cnf):
-#         # print(f"DEBUG: clause={clause}, i={i}, n_variables+i={n_variables+i}")
-#         get_repr(qc, False, clause, n_variables + i)
-#     qc.barrier()
-    
-    
+        control_indices = [edge_q[abs(literal) - 1] for literal in clause]
+        qc.mcx(control_indices, clause_a[i])
 
-#     qc.mcx(list(range(n_variables, n)), n)
+        for literal in clause:
+            if literal > 0:
+                qc.x(edge_q[abs(literal) - 1])
     
-#     qc.p(beta, n)
-    
-#     qc.mcx(list(range(n_variables, n)), n)
-
-#     qc.barrier()
-#     # Uncompute ancilla qubits
-#     for i in range(len(cnf)-1, -1, -1):
-#         get_repr(qc, True, cnf[i], n_variables + i)
-    
-#     qc.barrier()
-
-def oracle(qc, is_inv, beta):
-    qc.cx(2, 9)
-    qc.cx(0, 10)
-    qc.cx(1, 11)
-    
-    qc.x(6)
-    qc.x(7)
-    qc.x(8)
-    
-    qc.cx(4, 9)
-    qc.cx(5, 10)
-    qc.cx(3, 11)
-    
-    qc.x(9)
-    qc.x(10)
-    qc.x(11)
-    
-    qc.cx(6, 12)
-    qc.cx(7, 13)
-    qc.cx(8, 14)
-    
-    qc.x(6)
-    qc.x(7)
-    qc.x(8)
-    
-    # reset to |0> qubit 6, 7, 8
-    qc.reset(6)
-    qc.reset(7)
-    qc.reset(8)
-    
-    qc.mcx([6, 12], 15)
-    qc.mcx([7, 13], 16)
-    qc.mcx([8, 14], 17)
-    
-    qc.x(6)
-    qc.x(7)
-    qc.x(8)
-    
-    qc.reset(11)
-    qc.reset(12)
-    qc.reset(13)
-    qc.reset(14)
-    
-    qc.cx(15, 6)
-    qc.cx(16, 7)
-    qc.cx(17, 8)
-    
-    qc.mcx([0, 6], 18)
-    qc.cx(18, 0)
-    qc.cx(0, 9)
-    qc.reset(18)
-    
-    qc.mcx([1, 6], 18)
-    qc.cx(18, 1)
-    qc.cx(1, 10)
-    qc.reset(18)
-    
-    qc.mcx([2, 7], 18)
-    qc.cx(18, 2)
-    qc.cx(2, 8)
-    qc.reset(18)
-    
-    qc.mcx([3, 7], 18)
-    qc.cx(18, 3)
-    qc.cx(3, 11)
-    qc.reset(18)
-    
-    qc.mcx([4, 8], 18)
-    
-    qc.x(11)
-    qc.cx(18, 4)
-    qc.reset(18)
-    qc.cx(4, 9)
-    qc.cx(11, 14)
-    
-    qc.x(9)
-    qc.x(11)
-    
-    qc.mcx([5, 8], 18)
-    qc.cx(18, 5)
-    
-    qc.cx(9, 12)
-    qc.reset(18)
-    
-    qc.mcx([6, 7, 8], 19)
-    qc.p(beta, 19)
-    
-    qc.cx(5, 10)
-    qc.x(9)
-    qc.x(10)
-    qc.cx(10, 13)
-    qc.x(10)
-    
-    qc.barrier()
-    
-    qc.x(10)
-    qc.cx(10, 13)
-    qc.x(10)
-    qc.x(9)
-    qc.cx(5, 10)
-    
-    # qc.p(beta, 19)
-    qc.mcx([6, 7, 8], 19)
-    
-    qc.reset(18)
-    qc.cx(9, 12)
-    
-    qc.cx(18, 5)
-    qc.mcx([5, 8], 18)
-    
-    qc.x(11)
-    qc.x(9)
-    
-    qc.cx(11, 14)
-    qc.cx(4, 9)
-    qc.reset(18)
-    qc.cx(18, 4)
-    qc.x(11)
-    
-    qc.mcx([4, 8], 18)
-    
-    qc.reset(18)
-    qc.cx(3, 11)
-    qc.cx(18, 3)
-    qc.mcx([3, 7], 18)
-    
-    qc.reset(18)
-    qc.cx(2, 8)
-    qc.cx(18, 2)
-    qc.mcx([2, 7], 18)
-    
-    qc.reset(18)
-    qc.cx(1, 10)
-    qc.cx(18, 1)
-    qc.mcx([1, 6], 18)
-    
-    qc.reset(18)
-    qc.cx(0, 9)
-    qc.cx(18, 0)
-    qc.mcx([0, 6], 18)
-    
-    qc.cx(17, 8)
-    qc.cx(16, 7)
-    qc.cx(15, 6)
-    
-    qc.reset(14)
-    qc.reset(13)
-    qc.reset(12)
-    qc.reset(11)
-    
-    qc.x(8)
-    qc.x(7)
-    qc.x(6)
-    
-    qc.mcx([8, 14], 17)
-    qc.mcx([7, 13], 16)
-    qc.mcx([6, 12], 15)
-    
-    qc.reset(8)
-    qc.reset(7)
-    qc.reset(6)
-    # reset to |0> qubit 6, 7, 8
-    
-    qc.x(8)
-    qc.x(7)
-    qc.x(6)
-    
-    qc.cx(8, 14)
-    qc.cx(7, 13)
-    qc.cx(6, 12)
-    
-    qc.x(11)
-    qc.x(10)
-    qc.x(9)
-    
-    qc.cx(3, 11)
-    qc.cx(5, 10)
-    qc.cx(4, 9)
-    
-    qc.x(8)
-    qc.x(7)
-    qc.x(6)
-    
-    qc.cx(1, 11)
-    qc.cx(0, 10)
-    qc.cx(2, 9)
-    
-    return qc
-        
-    
-def create_circuit(qc, n_variables, cnf, n, alpha, beta):
-    qc.barrier()
-    oracle(qc, False, beta) #n_variables, beta,  cnf, n
-    qc.barrier()
-    # qc.p(beta, n)
-    # qc.barrier()
-    # oracle(qc, n_variables, beta, cnf, n)
-    # qc.barrier()
-    
-    qc.h(list(range(n_variables)))
-    qc.barrier()
-    qc.x(list(range(n_variables - 1)))
-    qc.barrier()
-    
-    qc.p(-alpha/2, n_variables - 1)
-    qc.barrier()
-    qc.mcx(list(range(n_variables - 1)), n_variables - 1)
-    qc.mcx(list(range(n_variables - 1)), n)
-    qc.barrier()
-    
-    qc.p(-alpha/2, n_variables - 1)
-    qc.p(-alpha/2, n)
-    qc.barrier()
-    qc.mcx(list(range(n_variables - 1)), n_variables - 1)
-    qc.mcx(list(range(n_variables - 1)), n)
-    
-    qc.p(alpha, n_variables - 1)
-    
-    qc.barrier()
-    qc.x(list(range(n_variables - 1)))
-    qc.barrier()
-    qc.h(list(range(n_variables)))
-    qc.barrier()
-    
-
-def createCircuit(n_variables, l, cnf, n, debug, delta):
-    qc = QuantumCircuit(n + 1)
-    
-    qc.h(list(range(n_variables)))
-    
-    # L = 2l + 1
-    L = 2 * l + 1
-    
-    gamma_inv = chebyshev(1/L, 1/delta)
-    omega = 1 - chebyshev(1/L, 1/delta)**(-2)
-    gamma = 1/gamma_inv
-    # print(f"DEBUG: gamma_inv={gamma_inv}, gamma={gamma}")
-    
-    alpha_values = mpm.zeros(1, l)
-    beta_values = mpm.zeros(1, l)
-    for i in range(l):
-        alpha_values[i] = 2*mpm.acot(mpm.tan(2*mpm.pi*(i+1)/L) * mpm.sqrt(1-1/gamma_inv**2))
-        beta_values[l-(i+1)+1-1] = -alpha_values[i]
-        
-    gamma_inv = np.array([gamma_inv], dtype=complex)[0].real
-    omega = np.array([omega], dtype=complex)[0].real
-    alpha_values = np.array(alpha_values.tolist()[0], dtype=complex).real
-    beta_values = np.array(beta_values.tolist()[0], dtype=complex).real
-
-    for i in range(l):
-        create_circuit(qc, n_variables, cnf, n, alpha_values[i], beta_values[i])
-    
-    
-    # plot alphas and betas
-    if debug: 
-        plt.plot(alpha_values, label="Alpha")
-        plt.plot(beta_values, label="Beta")
-        plt.legend()
-        plt.savefig("debug/alphas-betas.png")
-        plt.close()
+    qc.x(clause_a)
+    qc.mcx(clause_a[:], cnf_ok_a[0])
+    qc.x(clause_a)
     
     return qc
 
-def run_on_ibm(qc):
-    service = QiskitRuntimeService()
-
-    backend = service.least_busy(operational=True, simulator=False)
-    pm = generate_preset_pass_manager(target=backend.target, optimization_level=0)
-    grover = pm.run(qc)
-
-    # with Session(backend=backend) as session:
-    sampler = SamplerV2(mode=backend)
-    job = sampler.run([grover], shots=10024)
-    pub_result = job.result()
-    print(f"Sampler job ID: {job.job_id()}")
-    counts = pub_result[0].data.meas.get_counts()
+def build_acyclicity_oracle(num_nodes, node_names, causal_dict, causal_to_cnf_map, n_variables):
+    """
+    Simplified version that's easier to debug.
+    Checks if the graph is acyclic by verifying that we can find a valid topological ordering.
+    """
+    edge_q = QuantumRegister(n_variables, name='edge')
+    work_a = AncillaRegister(num_nodes * num_nodes, name='work')  # Working space
+    acyclic_ok_a = AncillaRegister(1, name='acyclic_ok')
     
-    probabilities = {key: value / sum(counts.values()) for key, value in counts.items()}
-
-    return probabilities
-
-def solveFixedQuantumSAT(cnf, l_iterations, delta, debug=False, simulation=True):
+    qc = QuantumCircuit(edge_q, work_a, acyclic_ok_a, name="Acyclicity_Oracle_Simple")
     
-    # as usual structural check for the CNF
-    structural_check(cnf)
+    # Build edge mapping
+    edge_map = {}
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            if i != j:
+                key = (node_names[i], node_names[j], 'direct')
+                if key in causal_dict and causal_dict[key] in causal_to_cnf_map:
+                    cnf_var = causal_to_cnf_map[causal_dict[key]]
+                    edge_map[(i, j)] = cnf_var - 1
     
-    variables = set()
-    for clause in cnf:
-        for var in clause:
-            variables.add(abs(var))
-            
-    n_variables = len(variables)
+    # For small graphs, we can check all possible cycles directly
+    # Check for cycles of length 2 (bidirectional edges)
+    work_idx = 0
+    for i in range(num_nodes):
+        for j in range(i + 1, num_nodes):
+            if (i, j) in edge_map and (j, i) in edge_map:
+                # Check if both edges exist
+                qc.ccx(edge_q[edge_map[(i, j)]], edge_q[edge_map[(j, i)]], work_a[work_idx])
+                work_idx += 1
+    
+    # Check for cycles of length 3
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            for k in range(num_nodes):
+                if i != j and j != k and k != i:
+                    edges = [(i, j), (j, k), (k, i)]
+                    if all(edge in edge_map for edge in edges):
+                        edge_qubits = [edge_q[edge_map[edge]] for edge in edges]
+                        qc.mcx(edge_qubits, work_a[work_idx])
+                        work_idx += 1
+    
+    # The graph is acyclic if NO cycles are found
+    if work_idx > 0:
+        qc.x(work_a[:work_idx])  # Flip all cycle indicators
+        qc.mcx(work_a[:work_idx], acyclic_ok_a[0])  # All must be 1 (no cycles)
+        qc.x(work_a[:work_idx])  # Flip back
+    else:
+        # No possible cycles, always acyclic
+        qc.x(acyclic_ok_a[0])
+    
+    # Uncompute work register
+    work_idx = 0
+    for i in range(num_nodes):
+        for j in range(i + 1, num_nodes):
+            if (i, j) in edge_map and (j, i) in edge_map:
+                qc.ccx(edge_q[edge_map[(i, j)]], edge_q[edge_map[(j, i)]], work_a[work_idx])
+                work_idx += 1
+    
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            for k in range(num_nodes):
+                if i != j and j != k and k != i:
+                    edges = [(i, j), (j, k), (k, i)]
+                    if all(edge in edge_map for edge in edges):
+                        edge_qubits = [edge_q[edge_map[edge]] for edge in edges]
+                        qc.mcx(edge_qubits, work_a[work_idx])
+                        work_idx += 1
+    
+    return qc
+
+def create_circuit(qc, alpha, beta, qubit_map, oracles):
+    """Builds one full Grover-style iteration."""
+    # --- Oracle Phase ---
+    qc.append(oracles['cnf'], qubit_map['cnf_oracle_qubits'])
+    qc.append(oracles['acyclic'], qubit_map['acyclic_oracle_qubits'])
+    
+    qc.mcx([qubit_map['cnf_ok'], qubit_map['acyclic_ok']], qubit_map['final_ok'])
+    qc.p(beta, qubit_map['final_ok'])
+    qc.mcx([qubit_map['cnf_ok'], qubit_map['acyclic_ok']], qubit_map['final_ok'])
+    
+    qc.append(oracles['acyclic'].inverse(), qubit_map['acyclic_oracle_qubits'])
+    qc.append(oracles['cnf'].inverse(), qubit_map['cnf_oracle_qubits'])
+    qc.barrier(label="Oracle")
+    
+    # qc.append(oracles['cnf'], qubit_map['cnf_oracle_qubits'])
+    
+    # qc.mcx([qubit_map['cnf_ok']], qubit_map['final_ok'])
+    # qc.p(beta, qubit_map['final_ok'])
+    # qc.mcx([qubit_map['cnf_ok']], qubit_map['final_ok'])
+    
+    # qc.append(oracles['cnf'].inverse(), qubit_map['cnf_oracle_qubits'])
+    # qc.barrier(label="Oracle")
+    
+    # --- Diffuser Phase (Standard Grover Diffuser) ---
+    edge_qubits = qubit_map['edge']
+    qc.h(edge_qubits)
+    qc.x(edge_qubits[:-1])
+    qc.p(-alpha/2, edge_qubits[-1])
+    qc.mcx(edge_qubits[:-1], edge_qubits[-1])
+    qc.mcx(edge_qubits[:-1], qubit_map['final_ok'])
+    qc.p(-alpha/2, edge_qubits[-1])
+    qc.p(-alpha/2, qubit_map['final_ok']) 
+    qc.mcx(edge_qubits[:-1], edge_qubits[-1])
+    qc.mcx(edge_qubits[:-1], qubit_map['final_ok'])
+    qc.p(alpha, edge_qubits[-1])
+    qc.x(edge_qubits[:-1])
+    qc.h(edge_qubits)
+    qc.barrier(label="Diffuser")
+
+def solveFixedQuantumSAT(cnf, node_names, causal_dict, causal_to_cnf_map, l_iterations, delta, debug=False, simulation=True):
+    """Main entry point for the quantum solver."""
+    all_vars_in_cnf = {abs(var) for clause in cnf for var in clause}
+    n_variables = max(all_vars_in_cnf) if all_vars_in_cnf else 0
     n_clauses = len(cnf)
-    v = 3
-    i = 3
-    z = 3
-    t = 3
-    a = 1
+    num_nodes = len(node_names)
     
-    n = n_variables + v + i + z + t + a
+    cnf_oracle = build_cnf_oracle(cnf, n_variables, n_clauses)
+    acyclicity_oracle = build_acyclicity_oracle(num_nodes, node_names, causal_dict, causal_to_cnf_map, n_variables)
     
-    print(f"LOG: Circuit with {n} qubits")
+    edge_q = QuantumRegister(n_variables, name='edge')
+    clause_a = QuantumRegister(n_clauses, name='clause')
+    cnf_ok_a = QuantumRegister(1, name='cnf_ok')
+    visited_q = QuantumRegister(num_nodes, name='visited')
+    incoming_a = QuantumRegister(num_nodes, name='incoming')
+    zero_deg_a = QuantumRegister(num_nodes, name='zero_deg')
+    acyclic_ok_a = QuantumRegister(1, name='acyclic_ok')
+    final_ok_a = QuantumRegister(1, name='final_ok')
+    c_reg = ClassicalRegister(n_variables, name='c')
     
-    if n > 25 and simulation:
-        print("LOG: Too many qubits, aborting")
+    qc = QuantumCircuit(edge_q, clause_a, cnf_ok_a, visited_q, incoming_a, zero_deg_a, acyclic_ok_a, final_ok_a, c_reg)
+    
+    qubit_map = {
+        'edge': edge_q, 'final_ok': final_ok_a[0],
+        'cnf_ok': cnf_ok_a[0], 'acyclic_ok': acyclic_ok_a[0],
+        'cnf_oracle_qubits': edge_q[:] + clause_a[:] + cnf_ok_a[:],
+        'acyclic_oracle_qubits': edge_q[:] + visited_q[:] + incoming_a[:] + zero_deg_a[:] + acyclic_ok_a[:]
+    }
+    
+    print(f"LOG: Circuit requires {qc.num_qubits} qubits ({n_variables} for solution, {qc.num_qubits - n_variables} ancillas).")
+    
+    if qc.num_qubits > 28 and simulation:
+        print("LOG: Too many qubits for efficient simulation, aborting.")
         return False, []
     
-    qc = createCircuit(n_variables, l_iterations, cnf, n, debug, delta=delta)
+    qc.h(edge_q)
     
-    print(f"LOG: Circuit created, circuit depth: {qc.depth()}")
+    L = 2 * l_iterations + 1
+    gamma_inv = chebyshev(1/L, 1/delta)
+    alpha_values = np.array([2*mpm.acot(mpm.tan(2*mpm.pi*(i+1)/L) * mpm.sqrt(1-1/gamma_inv**2)) for i in range(l_iterations)], dtype=complex).real
+    beta_values = -alpha_values[::-1]
     
-    qc.measure_all()
+    oracles = {'cnf': cnf_oracle, 'acyclic': acyclicity_oracle}
+
+    for i in range(l_iterations):
+        create_circuit(qc, alpha_values[i], beta_values[i], qubit_map, oracles)
     
+    print(f"LOG: Circuit created, depth: {qc.depth()}")
+    
+    qc.measure(edge_q, c_reg)
+    
+    # ... (rest of the function is the same as before) ...
     if debug:
-        circuit_drawer(qc, output="mpl", fold=-1)
-        plt.savefig("debug/fixed-circuit-acyclic.png")
+        print("DEBUG: Saving circuit diagrams...")
+        circuit_drawer(qc, output="mpl", fold=-1).savefig("debug/fixed-circuit-acyclic.png")
+        plt.close()
+        cnf_oracle.draw('mpl', fold=-1).savefig('debug/cnf_oracle.png')
+        plt.close()
+        acyclicity_oracle.draw('mpl', fold=-1).savefig('debug/acyclicity_oracle.png')
         plt.close()
         
-    # exit()
-    
     qc = RemoveBarriers()(qc)
-    optimized_qc = transpile(qc, optimization_level=3)
-    
+    optimized_qc = qc
+
     if simulation:
         result = Sampler().run([optimized_qc], shots=1024).result()
-        counts = result.quasi_dists[0]
-        counts = counts.binary_probabilities(num_bits=n)
+        counts = result.quasi_dists[0].binary_probabilities(num_bits=n_variables)
     else:
-        # Run on IBM quantum hardware
-        print("LOG: Running on IBM Quantum Hardware...")
-        counts = run_on_ibm(optimized_qc)
+        print("LOG: Real hardware execution not implemented.")
+        return False, []
     
-    # this statememnt is just for printing the solutions as function of the repetitions
-    # return True, counts
-    
-    if debug: print(f"DEBUG: clustering solutions, {len(counts)}")
+    if debug: print(f"DEBUG: Clustering {len(counts)} solutions.")
     temp_counts, sil = cluster_solutions(counts)
-    
-    
-    
     print(f"LOG: Silhouette score: {sil}")
     
-    if debug: print(f"DEBUG: clustered solutions, {len(counts)}")
-    
-    if debug: elbow_plot(counts, temp_counts)
-    
-    
-    # doing this just to debug the clustering, sorry for the mess
-    # counts = temp_counts
-    
     if debug: 
+        elbow_plot(counts, temp_counts)
         plot_histogram(counts)
         plt.savefig('debug/fixed-histogram.png')
         plt.close()
+
     solutions = []
-    
-    if len(counts) == 0:
+    if not counts:
         return False, []
     else:
         is_sat = True
         for bitstring, prob in sorted(counts.items(), key=lambda x: x[1], reverse=True):
-            # print(f"DEBUG: bitstring={bitstring}, prob={prob}")
-            # remove the first n_clauses bits
-            bitstring = bitstring[n_clauses:]
-            # print(f"DEBUG: bitstring={bitstring}")
-            # reverse the bitstring ordering
             bitstring = bitstring[::-1]
-            # print(f"DEBUG: bitstring={bitstring}")
             solution = []
             for i in range(n_variables):
-                # print(i)
-                var_num = i + 1  # Convert to 1-indexed
+                var_num = i + 1
                 if bitstring[i] == '0':
                     solution.append(-var_num)
                 else:
                     solution.append(var_num)
             solutions.append(solution)
-    
-    # print(f"DEBUG: solutions={solutions}")
-        
+            
     return is_sat, solutions
