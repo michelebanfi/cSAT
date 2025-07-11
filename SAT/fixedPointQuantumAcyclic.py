@@ -20,6 +20,9 @@ def chebyshev(L, x):
 
 def build_cnf_oracle(cnf, n_variables, n_clauses):
     """Builds the CNF checking logic as a separate, reversible circuit."""
+    
+    print(cnf, n_variables, n_clauses)
+    
     edge_q = QuantumRegister(n_variables, name='edge')
     clause_a = AncillaRegister(n_clauses, name='clause')
     cnf_ok_a = AncillaRegister(1, name='cnf_ok')
@@ -32,7 +35,6 @@ def build_cnf_oracle(cnf, n_variables, n_clauses):
         
         control_indices = [edge_q[abs(literal) - 1] for literal in clause]
         qc.mcx(control_indices, clause_a[i])
-
         for literal in clause:
             if literal > 0:
                 qc.x(edge_q[abs(literal) - 1])
@@ -45,25 +47,40 @@ def build_cnf_oracle(cnf, n_variables, n_clauses):
 
 def build_acyclicity_oracle(num_nodes, node_names, causal_dict, causal_to_cnf_map, n_variables):
     """
-    Builds a reversible acyclicity oracle.
-    This version attempts to strictly uncompute all temporary ancillas.
+    Builds a reversible acyclicity oracle using Kahn's algorithm with proper uncomputation.
+    The key insight is to store the computation history in additional ancillas.
     """
     edge_q = QuantumRegister(n_variables, name='edge')
-    visited_q = QuantumRegister(num_nodes, name='visited') 
-    # ancilla_zero_indegree: For each node, tracks if it has zero in-degree from unvisited nodes
-    ancilla_zero_indegree = AncillaRegister(num_nodes, name='anc_zero_indeg')
-    # ancilla_incoming_edge_temp: Temporary storage for each (edge_exists AND source_unvisited)
-    ancilla_incoming_edge_temp = AncillaRegister(num_nodes, name='anc_incoming_temp') # One for each possible incoming edge
-    # ancilla_or_temp: A single ancilla for the OR aggregation logic
-    ancilla_or_temp = AncillaRegister(1, name='anc_or_temp') # Used for computing OR of incoming_edge_temp
     
+    # For each iteration, we need to store:
+    # 1. The state of visited nodes at that iteration
+    # 2. Which nodes had zero in-degree at that iteration
+    # 3. Which nodes were processed in that iteration
+    
+    # History ancillas - one set for each iteration
+    visited_history = []
+    zero_indegree_history = []
+    processed_history = []
+    
+    for iteration in range(num_nodes):
+        visited_history.append(AncillaRegister(num_nodes, name=f'visited_hist_{iteration}'))
+        zero_indegree_history.append(AncillaRegister(num_nodes, name=f'zero_indeg_hist_{iteration}'))
+        processed_history.append(AncillaRegister(num_nodes, name=f'processed_hist_{iteration}'))
+    
+    # Working registers
+    visited_q = QuantumRegister(num_nodes, name='visited')
+    zero_indegree_q = QuantumRegister(num_nodes, name='zero_indegree')
+    temp_ancillas = AncillaRegister(num_nodes * num_nodes, name='temp')
     acyclic_ok_a = AncillaRegister(1, name='acyclic_ok')
     
-    qc = QuantumCircuit(edge_q, visited_q, ancilla_zero_indegree, 
-                        ancilla_incoming_edge_temp, ancilla_or_temp, # New registers
-                        acyclic_ok_a, name="Acyclicity_Oracle")
+    # Build the circuit
+    all_registers = [edge_q, visited_q, zero_indegree_q, temp_ancillas, acyclic_ok_a]
+    for i in range(num_nodes):
+        all_registers.extend([visited_history[i], zero_indegree_history[i], processed_history[i]])
     
-    # Build edge mapping for efficient lookup
+    qc = QuantumCircuit(*all_registers, name="Acyclicity_Oracle_Fixed_Kahns")
+    
+    # Build edge mapping
     edge_map = {}
     for i in range(num_nodes):
         for j in range(num_nodes):
@@ -71,155 +88,176 @@ def build_acyclicity_oracle(num_nodes, node_names, causal_dict, causal_to_cnf_ma
                 key = (node_names[i], node_names[j], 'direct')
                 if key in causal_dict and causal_dict[key] in causal_to_cnf_map:
                     cnf_var = causal_to_cnf_map[causal_dict[key]]
-                    edge_map[(i, j)] = cnf_var - 1  # Convert to 0-indexed qubit index
-
-    # Iterate num_nodes times, simulating steps of Kahn's algorithm
-    for iteration in range(num_nodes):
-        qc.barrier(label=f"Kahn_Iter_{iteration}_Compute_InDegree")
-
-        # Step 1: Compute which unvisited nodes have zero in-degree
-        for node_idx in range(num_nodes):
-            # Compute (edge_k_to_node_idx AND NOT visited_q[k]) into ancilla_incoming_edge_temp[k]
-            # for all k.
-            
-            # This loop *must* uncompute its effect on ancilla_incoming_edge_temp[k]
-            # at the end of computing ancilla_zero_indegree[node_idx]
-            
-            # 1a. Compute individual (edge AND NOT visited) flags
-            # Use ancilla_incoming_edge_temp[k] to store: edge(k->node_idx) exists AND k is unvisited
-            for k in range(num_nodes):
-                if k != node_idx and (k, node_idx) in edge_map:
-                    edge_qubit = edge_q[edge_map[(k, node_idx)]]
-                    qc.x(visited_q[k]) # Invert visited_q[k] so it's 1 if unvisited
-                    qc.ccx(edge_qubit, visited_q[k], ancilla_incoming_edge_temp[k])
-                    qc.x(visited_q[k]) # Uninvert visited_q[k]
-
-            # 1b. Aggregate to check if ANY incoming edge from unvisited exists
-            # We want ancilla_or_temp[0] to be 1 if ANY ancilla_incoming_edge_temp[k] is 1
-            # Implemented as NOT(AND(NOT A, NOT B, ...))
-            
-            controls_for_or_temp = []
-            for k in range(num_nodes):
-                 if k != node_idx and (k, node_idx) in edge_map: # Only include relevant ones
-                    controls_for_or_temp.append(ancilla_incoming_edge_temp[k])
-            
-            if controls_for_or_temp:
-                for ctrl in controls_for_or_temp: # Flip controls to 0 state
-                    qc.x(ctrl)
-                qc.mcx(controls_for_or_temp, ancilla_or_temp[0]) # If all controls are 0, target flips.
-                for ctrl in controls_for_or_temp: # Unflip controls
-                    qc.x(ctrl)
-                qc.x(ancilla_or_temp[0]) # Flip target to make it an OR (1 if any input was 1)
-            # If controls_for_or_temp is empty, ancilla_or_temp[0] should remain 0 (no incoming edges from unvisited)
-
-            # 1c. Set ancilla_zero_indegree[node_idx] based on (NOT ancilla_or_temp[0]) AND (NOT visited_q[node_idx])
-            # ancilla_zero_indegree[node_idx] should be 1 if node has zero in-degree AND is unvisited.
-            # So, (NOT ancilla_or_temp[0]) means no incoming edges from unvisited
-            # AND (NOT visited_q[node_idx]) means the node itself is unvisited.
-
-            qc.x(ancilla_or_temp[0]) # ancilla_or_temp[0] now 1 if no incoming, 0 if incoming
-            qc.x(visited_q[node_idx]) # visited_q[node_idx] now 1 if unvisited, 0 if visited
-            qc.ccx(ancilla_or_temp[0], visited_q[node_idx], ancilla_zero_indegree[node_idx])
-            qc.x(visited_q[node_idx]) # Unflip visited_q[node_idx]
-
-            # 1d. Uncompute ancilla_or_temp[0] and ancilla_incoming_edge_temp
-            # Reverse 1c
-            qc.x(visited_q[node_idx]) # Flip visited_q for uncomputation
-            qc.ccx(ancilla_or_temp[0], visited_q[node_idx], ancilla_zero_indegree[node_idx])
-            qc.x(visited_q[node_idx]) # Unflip visited_q
-
-            # Reverse 1b
-            qc.x(ancilla_or_temp[0]) # Unflip OR target
-            if controls_for_or_temp:
-                for ctrl in reversed(controls_for_or_temp): # Unflip controls (reverse order)
-                    qc.x(ctrl)
-                qc.mcx(controls_for_or_temp, ancilla_or_temp[0]) # Uncompute NAND
-                for ctrl in reversed(controls_for_or_temp): # Unflip controls (reverse order)
-                    qc.x(ctrl)
-            
-            # Reverse 1a
-            for k in range(num_nodes - 1, -1, -1): # Reverse order for uncomputation
-                if k != node_idx and (k, node_idx) in edge_map:
-                    edge_qubit = edge_q[edge_map[(k, node_idx)]]
-                    qc.x(visited_q[k]) # Re-invert visited_q[k]
-                    qc.ccx(edge_qubit, visited_q[k], ancilla_incoming_edge_temp[k])
-                    qc.x(visited_q[k]) # Re-uninvert visited_q[k]
-        
-        qc.barrier(label=f"Kahn_Iter_{iteration}_Mark_Visited")
-
-        # Step 2: Mark nodes as visited
-        # If ancilla_zero_indegree[node_idx] is 1, it means this node *can* be visited.
-        # And it shouldn't already be visited.
-        # Use ancilla_or_temp[0] as a temporary for this CCX
-        for node_idx in range(num_nodes):
-            qc.x(visited_q[node_idx]) # Flip visited_q so unvisited is 1
-            # Controls: ancilla_zero_indegree[node_idx] (must be 1) AND visited_q[node_idx] (must be 1 for unvisited)
-            qc.ccx(ancilla_zero_indegree[node_idx], visited_q[node_idx], ancilla_or_temp[0])
-            qc.cx(ancilla_or_temp[0], visited_q[node_idx]) # Flip visited_q if it should be visited
-            # Uncompute the temporary
-            qc.ccx(ancilla_zero_indegree[node_idx], visited_q[node_idx], ancilla_or_temp[0])
-            qc.x(visited_q[node_idx]) # Flip visited_q back to original sense (0=unvisited)
-        
-        qc.barrier(label=f"Kahn_Iter_{iteration}_Uncompute_ZeroIndegree")
-        # Step 3: Uncompute ancilla_zero_indegree for the next iteration.
-        # This reverses the logic of how ancilla_zero_indegree was set in Step 1.
-        # This loop needs to reverse the exact operation that set each ancilla_zero_indegree[node_idx]
-        
-        for node_idx in range(num_nodes - 1, -1, -1): # Uncompute in reverse order
-            # Reverse the CCX that set ancilla_zero_indegree[node_idx]
-            # This requires `ancilla_or_temp[0]` and `visited_q[node_idx]` to be in their state *before* that CCX.
-            # This is the trickiest part for iterative reversible algorithms.
-            # Assuming visited_q maintains its cumulative state, we apply the inverse.
-            qc.x(visited_q[node_idx]) # Re-invert visited_q[node_idx] for reversal
-            qc.ccx(ancilla_or_temp[0], visited_q[node_idx], ancilla_zero_indegree[node_idx])
-            qc.x(visited_q[node_idx]) # Un-invert visited_q[node_idx]
-            
-            # The `ancilla_or_temp[0]` itself was uncomputed in 1d for each node_idx.
-            # So, this loop for uncomputing `ancilla_zero_indegree` should effectively
-            # undo the `ancilla_zero_indegree` setting without touching other registers.
-            # This is still very challenging due to the iterative state updates.
-            # For a proper quantum oracle, ideally, `ancilla_zero_indegree` is reset to 0
-            # by exactly reversing how it was set for *that specific iteration's calculation*.
-            
-            # If the calculation of `ancilla_zero_indegree` was self-contained and reset its temp ancillas,
-            # then a simple reverse of the final setting gate here is what's needed.
-            # Given the deep nesting, it's very hard to guarantee correctness.
-            pass # Placeholder for complex cumulative uncomputation of ancilla_zero_indegree
-                 # This needs to be exactly the inverse of the computation in step 1c.
-                 # The registers `ancilla_or_temp[0]` and `visited_q[node_idx]` need to be
-                 # in the state they were in when `ancilla_zero_indegree[node_idx]` was set.
+                    edge_map[(i, j)] = cnf_var - 1
     
-    qc.barrier(label="Final_Acyclicity_Check")
-    # Final check: Acyclic if all nodes are visited.
-    # To check if all are 1:
-    qc.x(acyclic_ok_a[0]) # Set target to 1. If any visited_q is 0, it will flip to 0.
-    # Use ctrl_state='0' * num_nodes to check if all visited_q are NOT 1.
-    # We want acyclic_ok_a[0] to be 1 IF AND ONLY IF all visited_q are 1.
-    # Current method: mcx(visited_q[:], acyclic_ok_a[0]) flips if ALL controls are 1.
-    # We want: acyclic_ok_a[0] = AND(visited_q[0], visited_q[1], ...)
-    # Correct way to set acyclic_ok_a to 1 if all visited_q are 1:
-    qc.mcx(visited_q[:], acyclic_ok_a[0]) # If all visited_q are 1, acyclic_ok_a[0] flips.
-                                          # Initial state of acyclic_ok_a[0] should be 0.
-                                          # So, if all visited_q are 1, it becomes 1. If not, it stays 0.
-
-    # Final Uncomputation of visited_q and other ancillas:
-    # This is the most complex part of the entire oracle.
-    # You need to reverse the *cumulative* effect on `visited_q` from all iterations.
-    # And all `ancilla_zero_indegree`, `ancilla_incoming_edge_temp`, `ancilla_or_temp`
-    # must be returned to their initial |0> state.
-    # The current `pass` in Step 3 uncomputation is a major missing piece.
-    # For `ancilla_incoming_edge_temp` and `ancilla_or_temp`, their uncomputation is done per node_idx
-    # within the innermost loop, which is good.
-    # But `ancilla_zero_indegree` and especially `visited_q` are cumulative state, making reversal tough.
-
-    # A robust solution for the uncomputation of `visited_q` might involve
-    # creating a copy of `visited_q` at the start of each iteration, using it, and then
-    # uncomputing back to the original `visited_q` before the next iteration.
-    # This creates a significant number of ancillas.
-
+    # Kahn's algorithm iterations
+    for iteration in range(num_nodes):
+        qc.barrier(label=f"Iteration_{iteration}_Start")
+        
+        # Save current state to history
+        for node_idx in range(num_nodes):
+            qc.cx(visited_q[node_idx], visited_history[iteration][node_idx])
+        
+        # Compute zero in-degree nodes
+        for node_idx in range(num_nodes):
+            # Count incoming edges from unvisited nodes
+            incoming_controls = []
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        # temp = edge_exists AND node_k_not_visited
+                        qc.x(visited_q[k])  # Flip to get "not visited"
+                        qc.ccx(edge_q[edge_map[(k, node_idx)]], visited_q[k], temp_ancillas[temp_idx])
+                        qc.x(visited_q[k])  # Flip back
+                        incoming_controls.append(temp_ancillas[temp_idx])
+            
+            # Zero in-degree if no incoming edges from unvisited nodes AND node is unvisited
+            if incoming_controls:
+                # Use De Morgan's law: NOT(A OR B OR C) = NOT A AND NOT B AND NOT C
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+                qc.x(visited_q[node_idx])  # Flip to get "not visited"
+                qc.mcx(incoming_controls + [visited_q[node_idx]], zero_indegree_q[node_idx])
+                qc.x(visited_q[node_idx])  # Flip back
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+            else:
+                # No incoming edges, so zero in-degree if unvisited
+                qc.x(visited_q[node_idx])
+                qc.cx(visited_q[node_idx], zero_indegree_q[node_idx])
+                qc.x(visited_q[node_idx])
+        
+        # Save zero in-degree state to history
+        for node_idx in range(num_nodes):
+            qc.cx(zero_indegree_q[node_idx], zero_indegree_history[iteration][node_idx])
+        
+        # Process nodes with zero in-degree (mark as visited)
+        for node_idx in range(num_nodes):
+            qc.cx(zero_indegree_q[node_idx], processed_history[iteration][node_idx])
+            qc.cx(zero_indegree_q[node_idx], visited_q[node_idx])
+        
+        # Uncompute zero in-degree computation (using history)
+        for node_idx in range(num_nodes):
+            incoming_controls = []
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        incoming_controls.append(temp_ancillas[temp_idx])
+            
+            if incoming_controls:
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+                qc.x(visited_history[iteration][node_idx])  # Use history state
+                qc.mcx(incoming_controls + [visited_history[iteration][node_idx]], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+            else:
+                qc.x(visited_history[iteration][node_idx])
+                qc.cx(visited_history[iteration][node_idx], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+        
+        # Uncompute temp ancillas
+        for node_idx in range(num_nodes):
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        qc.x(visited_history[iteration][k])
+                        qc.ccx(edge_q[edge_map[(k, node_idx)]], visited_history[iteration][k], temp_ancillas[temp_idx])
+                        qc.x(visited_history[iteration][k])
+    
+    qc.barrier(label="Final_Check")
+    
+    # Final acyclicity check: all nodes should be visited
+    qc.mcx(visited_q[:], acyclic_ok_a[0])
+    
+    qc.barrier(label="Uncomputation_Start")
+    
+    # Uncompute everything in reverse order using the stored history
+    for iteration in range(num_nodes - 1, -1, -1):
+        qc.barrier(label=f"Uncompute_Iteration_{iteration}")
+        
+        # Recompute temp ancillas for this iteration
+        for node_idx in range(num_nodes):
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        qc.x(visited_history[iteration][k])
+                        qc.ccx(edge_q[edge_map[(k, node_idx)]], visited_history[iteration][k], temp_ancillas[temp_idx])
+                        qc.x(visited_history[iteration][k])
+        
+        # Recompute zero in-degree using history
+        for node_idx in range(num_nodes):
+            incoming_controls = []
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        incoming_controls.append(temp_ancillas[temp_idx])
+            
+            if incoming_controls:
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+                qc.x(visited_history[iteration][node_idx])
+                qc.mcx(incoming_controls + [visited_history[iteration][node_idx]], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+            else:
+                qc.x(visited_history[iteration][node_idx])
+                qc.cx(visited_history[iteration][node_idx], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+        
+        # Uncompute the processing (reverse the visited updates)
+        for node_idx in range(num_nodes):
+            qc.cx(zero_indegree_q[node_idx], visited_q[node_idx])
+            qc.cx(zero_indegree_q[node_idx], processed_history[iteration][node_idx])
+        
+        # Uncompute zero in-degree history
+        for node_idx in range(num_nodes):
+            qc.cx(zero_indegree_q[node_idx], zero_indegree_history[iteration][node_idx])
+        
+        # Uncompute zero in-degree computation
+        for node_idx in range(num_nodes):
+            incoming_controls = []
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        incoming_controls.append(temp_ancillas[temp_idx])
+            
+            if incoming_controls:
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+                qc.x(visited_history[iteration][node_idx])
+                qc.mcx(incoming_controls + [visited_history[iteration][node_idx]], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+                for ctrl in incoming_controls:
+                    qc.x(ctrl)
+            else:
+                qc.x(visited_history[iteration][node_idx])
+                qc.cx(visited_history[iteration][node_idx], zero_indegree_q[node_idx])
+                qc.x(visited_history[iteration][node_idx])
+        
+        # Uncompute temp ancillas
+        for node_idx in range(num_nodes):
+            for k in range(num_nodes):
+                if k != node_idx and (k, node_idx) in edge_map:
+                    temp_idx = k * num_nodes + node_idx
+                    if temp_idx < len(temp_ancillas):
+                        qc.x(visited_history[iteration][k])
+                        qc.ccx(edge_q[edge_map[(k, node_idx)]], visited_history[iteration][k], temp_ancillas[temp_idx])
+                        qc.x(visited_history[iteration][k])
+        
+        # Uncompute visited history
+        for node_idx in range(num_nodes):
+            qc.cx(visited_q[node_idx], visited_history[iteration][node_idx])
+    
     return qc
-
-
 
 def create_circuit(qc, alpha, beta, qubit_map, oracles):
     """Builds one full Grover-style iteration."""
@@ -267,38 +305,76 @@ def solveFixedQuantumSAT(cnf, node_names, causal_dict, causal_to_cnf_map, l_iter
     n_clauses = len(cnf)
     num_nodes = len(node_names)
     
+    # Create oracles
     cnf_oracle = build_cnf_oracle(cnf, n_variables, n_clauses)
     acyclicity_oracle = build_acyclicity_oracle(num_nodes, node_names, causal_dict, causal_to_cnf_map, n_variables)
     
+    # Initialize registers for the main circuit
     edge_q = QuantumRegister(n_variables, name='edge')
     clause_a = QuantumRegister(n_clauses, name='clause')
     cnf_ok_a = QuantumRegister(1, name='cnf_ok')
+    
+    # Create registers for Kahn's algorithm acyclicity oracle
     visited_q = QuantumRegister(num_nodes, name='visited')
-    # These are the registers that match the internal oracle definition now
-    ancilla_zero_indegree = QuantumRegister(num_nodes, name='anc_zero_indeg')
-    ancilla_path_exists = QuantumRegister(num_nodes + 1, name='anc_path_exists') # Corrected size +1
-    acyclic_ok_a = QuantumRegister(1, name='acyclic_ok')
-    final_ok_a = QuantumRegister(1, name='final_ok')
+    zero_indegree_q = QuantumRegister(num_nodes, name='zero_indegree')
+    temp_ancillas = AncillaRegister(num_nodes * num_nodes, name='temp')
+    acyclic_ok_a = AncillaRegister(1, name='acyclic_ok')
+    
+    # Create history registers for Kahn's algorithm
+    visited_history = []
+    zero_indegree_history = []
+    processed_history = []
+    
+    for iteration in range(num_nodes):
+        visited_history.append(AncillaRegister(num_nodes, name=f'visited_hist_{iteration}'))
+        zero_indegree_history.append(AncillaRegister(num_nodes, name=f'zero_indeg_hist_{iteration}'))
+        processed_history.append(AncillaRegister(num_nodes, name=f'processed_hist_{iteration}'))
+    
+    final_ok_a = AncillaRegister(1, name='final_ok')
     c_reg = ClassicalRegister(n_variables, name='c')
 
-    # --- Create the main QuantumCircuit ---
-    qc = QuantumCircuit(edge_q, clause_a, cnf_ok_a, visited_q, 
-                        ancilla_zero_indegree, ancilla_path_exists, # Added correctly
-                        acyclic_ok_a, final_ok_a, c_reg)
+    # Create the main quantum circuit with all registers in the same order as the oracle
+    all_registers = [edge_q, clause_a, cnf_ok_a, visited_q, zero_indegree_q, 
+                     temp_ancillas, acyclic_ok_a, final_ok_a]
+    
+    # Add history registers in the same order as in the oracle
+    for i in range(num_nodes):
+        all_registers.append(visited_history[i])
+        all_registers.append(zero_indegree_history[i])
+        all_registers.append(processed_history[i])
+    
+    all_registers.append(c_reg)  # Add classical register last
+    qc = QuantumCircuit(*all_registers)
+    
+    # Create qubit map that exactly matches the acyclicity oracle's structure
+    acyclic_oracle_qubits = [edge_q[:], visited_q[:], zero_indegree_q[:], temp_ancillas[:], acyclic_ok_a[:]]
+    for i in range(num_nodes):
+        acyclic_oracle_qubits.append(visited_history[i][:])
+        acyclic_oracle_qubits.append(zero_indegree_history[i][:])
+        acyclic_oracle_qubits.append(processed_history[i][:])
+    
+    # Flatten the list of qubit lists
+    flat_acyclic_oracle_qubits = []
+    for qubits in acyclic_oracle_qubits:
+        flat_acyclic_oracle_qubits.extend(qubits)
     
     qubit_map = {
-        'edge': edge_q, 'final_ok': final_ok_a[0],
-        'cnf_ok': cnf_ok_a[0], 'acyclic_ok': acyclic_ok_a[0],
+        'edge': edge_q, 
+        'final_ok': final_ok_a[0],
+        'cnf_ok': cnf_ok_a[0], 
+        'acyclic_ok': acyclic_ok_a[0],
         'cnf_oracle_qubits': edge_q[:] + clause_a[:] + cnf_ok_a[:],
-        'acyclic_oracle_qubits': edge_q[:] + visited_q[:] + ancilla_zero_indegree[:] + ancilla_path_exists[:] + acyclic_ok_a[:]
+        'acyclic_oracle_qubits': flat_acyclic_oracle_qubits
     }
     
     print(f"LOG: Circuit requires {qc.num_qubits} qubits ({n_variables} for solution, {qc.num_qubits - n_variables} ancillas).")
+    print(f"LOG: Acyclicity oracle expects {len(flat_acyclic_oracle_qubits)} qubits")
     
-    if qc.num_qubits > 28 and simulation:
-        print("LOG: Too many qubits for efficient simulation, aborting.")
-        return False, []
+    # if qc.num_qubits > 28 and simulation:
+    #     print("LOG: Too many qubits for efficient simulation, aborting.")
+    #     return False, []
     
+    # Initialize qubits to superposition
     qc.h(edge_q)
     
     L = 2 * l_iterations + 1
@@ -314,6 +390,10 @@ def solveFixedQuantumSAT(cnf, node_names, causal_dict, causal_to_cnf_map, l_iter
     print(f"LOG: Circuit created, depth: {qc.depth()}")
     
     qc.measure(edge_q, c_reg)
+    
+    # if qc.num_qubits > 28 and simulation:
+    #     print("LOG: Too many qubits for efficient simulation, aborting.")
+    #     return False, []
     
     # ... (rest of the function is the same as before) ...
     if debug:
@@ -355,6 +435,7 @@ def solveFixedQuantumSAT(cnf, node_names, causal_dict, causal_to_cnf_map, l_iter
             solution = []
             for i in range(n_variables):
                 var_num = i + 1
+            
                 if bitstring[i] == '0':
                     solution.append(-var_num)
                 else:
